@@ -51,7 +51,7 @@ This is the beginnings of a book on MuPDF. It is far from complete, but offers u
 
 Any feedback, corrections or suggestions are welcome. Please visit \url{bugs.ghostscript.com} and open a bug with ``MuPDF'' as the product, and ``Documentation'' as the component.
 
-We will endeavour to make new versions available from the Documentation section of mupdf.com as they appear.
+We will endeavour to make new versions available from the Documentation section of \url{mupdf.com} as they appear.
  
 \tableofcontents
 
@@ -125,6 +125,7 @@ The core MuPDF library makes use of various software libraries.
 \item[MuJS] Javascript engine used for PDF files.
 \item[OpenJPEG] Image decoder for JPEG2000 images.
 \item[ZLib] Compression library.
+\item[LCMS2] ICC Color Management engine.
 \end{description}
 
 In addition, the MuPDF library can optionally make use of:
@@ -141,6 +142,7 @@ Finally, the MuPDF viewer for Linux and Windows can optionally make use of:
 
 These libraries are packaged with MuPDF, either in the distribution archives or as git submodules. From time to time, these libraries may include bug fixes that have not been accepted back into the upstream repositories. We therefore strongly recommend using the versions of the libraries that we ship, rather than any other versions you may find on your system.
 
+The exception to this is LCMS2. The version of LCMS2 included with MuPDF has API changes to make it incompatible with vanilla LCMS2. As such it is not merely a recommendation that you use the supplied version, but a requirement. The reasons for this incompatibility are discussed in the documentation with our version of the library.
 
 
 \chapter{Quick Start}
@@ -292,7 +294,7 @@ In pthreads, a lock might be implemented by \texttt{pthread\_mutex\_t}. In windo
 
 These locks are not assumed to be recursive (though recursive locks will work just fine).
 
-To avoid deadlocks, MuPDF guarantees never to take lock \textit{n} if that thread already holds lock \textit{m} (for \textit{n} > \textit{m}).
+To avoid deadlocks, MuPDF guarantees never to take lock \textit{n} if that thread already holds lock \textit{m} (for $n > m$).
 
 There are 3 simple rules to follow when using MuPDF in a multi threaded environment:
 
@@ -319,7 +321,7 @@ Calling a device simultaneously from different threads will cause it to get conf
 
 The context contains the exception stack for the \texttt{fz\_try}\slash\texttt{fz\_catch} constructs. As such trying to use the same context from multiple threads at the same time will lead to crashes.
 
-The solution to this is to `clone' the context. Each clone will share the same underlying store (and will inherit the same settings, such as allocators, locks etc), but will have its own exception handle. Other settings, such as anti-alias levels, will be inherited from the original at the time of cloning, but can be changed to be different if required.
+The solution to this is to `clone' the context. Each clone will share the same underlying store (and will inherit the same settings, such as allocators, locks etc), but will have its own exception stack. Other settings, such as anti-alias levels, will be inherited from the original at the time of cloning, but can be changed to be different if required.
 
 For example, in a viewer application, we might want to have a background process that runs through the file generating page thumbnails. In order for this not to interfere with the foreground process, we would clone the context, and use the cloned context in the thumbnailing thread. We might choose to disable anti-aliasing for the thumbnailing thread to trade quality for speed.
 
@@ -333,7 +335,7 @@ To clone a context, use \texttt{fz\_clone\_context}:
 
 	This function is meant to be used in multi-threaded
 	applications where each thread requires its own context, yet
-	parts of the global state, for example caching, is shared.
+	parts of the global state, for example caching, are shared.
 
 	ctx: Context obtained from fz_new_context to make a copy of.
 	ctx must have had locks and lock/functions setup when created.
@@ -533,9 +535,11 @@ In an ideal world, that would be all there is to it. Unfortunately, there are 2 
 
 The first one, relatively simple, is that you must not return from within a \texttt{fz\_try} block. To do so will corrupt the exception stack and cause problems and crashes. To mitigate this, you can safely \texttt{break} out of the \texttt{fz\_try}, and execution will pass into the \texttt{fz\_always} block (if there is one, or continue after the \texttt{fz\_catch} block if not).
 
+Similarly, you can \texttt{break} out of a \texttt{fz\_always} block, and execution will correctly pass into or after the \texttt{fz\_catch} block as appropriate, but this is less useful in practise.
+
 The second one, is more convoluted. If you do not wish to understand the long and complex reasons behind this, skip forward to the summary and just follow the rules there.
 
-As stated before \texttt{fz\_try\slash} \texttt{fz\_catch} are implemented using \texttt{setjmp}\slash \texttt{longjmp}, and these can `lose' changes to variables.
+As stated before \texttt{fz\_try\slash}\texttt{fz\_catch} are implemented using \texttt{setjmp}\slash \texttt{longjmp}, and these can `lose' changes to variables.
 
 For example:
 
@@ -573,7 +577,7 @@ It's more interesting to consider what will happen if we have failures.
 
 First let's consider what happens if the \texttt{make\_walls} fails. This will \texttt{fz\_throw} an exception, and control will jump immediately to the \texttt{fz\_always}. This will drop \texttt{w} and \texttt{r} (both of which are still NULL). The \texttt{fz\_catch} can then handle the error, either by returning NULL, to indicate failure, or perhaps by \texttt{fz\_rethrow}ing the error to an enclosing \texttt{fz\_try\slash} \texttt{fz\_catch} construct. No problems there.
 
-So what happens when the failure occurs in \texttt{make\_roof} fails? Let's run through the code again.
+So what happens when the failure occurs in \texttt{make\_roof}? Let's run through the code again.
 
 This time, \texttt{make\_walls} succeeds, and \texttt{w} is set to this new value. Then \texttt{make\_roof} fails, \texttt{fz\_throw}ing an exception, and control will jump immediately to the \texttt{fz\_always}. This will then try to drop \texttt{w} (now a valid value) and \texttt{r} (which is still NULL). The \texttt{fz\_catch} can then handle the error, either by returning NULL, to indicate failure, or perhaps by \texttt{fz\_rethrow}ing the error to an enclosing \texttt{fz\_try\slash} \texttt{fz\_catch} construct. All sounds quite plausible.
 
@@ -585,7 +589,7 @@ In \texttt{fz\_try\slash} \texttt{fz\_catch} terms, this means that any local va
 
 Fortunately, there is a fix for this, \texttt{fz\_var}. By calling \texttt{fz\_var(w);} we can `protect' variable \texttt{w} from such unwanted behaviour.
 
-It's not really necessary to know how this works, but for those interested, a quick explanation. The `loss' of the value occurs because the compiler can postpone writing the value back into the storage location for the variable (or can choose to just hold it in a register). The call to \texttt{fz\_var} passes the address of the variable out of scope; this forces the compiler not to hold it in a register. Further, the compiler has no way of knowing whether any functions it call might access that location, so it needs to make sure that the variable value is written back on every function call - such as longjmp. Hence the variable is magically protected.
+It's not really necessary to know how this works, but for those interested, a quick explanation. The `loss' of the value occurs because the compiler can postpone writing the value back into the storage location for the variable (or can choose to just hold it in a register). The call to \texttt{fz\_var} passes the address of the variable out of scope; this forces the compiler not to hold it in a register. Further, the compiler has no way of knowing whether any functions it call might access that location, so it needs to make sure that the variable value is written back on every function call - such as \texttt{longjmp}. Hence the variable is magically protected.
 
 Calls to \texttt{fz\_var} are very low cost (but are not NOPs), so erring on the side of caution and calling \texttt{fz\_var} on more than you need to will probably not hurt.
 
@@ -686,7 +690,7 @@ The basic exception handling rules are as follows:
 \item A \texttt{fz\_try} block must be paired with an \texttt{fz\_catch} block, and optionally an \texttt{fz\_always} block can appear between them.
 \item Never return from an \texttt{fz\_try} block.
 \item An \texttt{fz\_try} block will terminate when control reaches the end of the block, or when \texttt{break} is called.
-\item Any variable that is changed within an \texttt{fz\_try} block may lose its value if an exception occurs, unless protected by \texttt{fz\_var} call.
+\item Any local variable that is changed within an \texttt{fz\_try} block may lose its value if an exception occurs, unless protected by \texttt{fz\_var} call.
 \item The contents of the \texttt{fz\_always} block will always be executed (after the \texttt{fz\_try} block and before the \texttt{fz\_catch} block, if appropriate).
 \item If an exception is thrown during the \texttt{fz\_try} block, control will jump to the \texttt{fz\_always} block (if there is one) and then continue to the \texttt{fz\_catch} block.
 \end{enumerate}
@@ -708,7 +712,7 @@ As the document is rendered, more memory is needed to hold rendered versions of 
 
 Keeping all this data around can end up using a large amount of memory, which may be unfeasible for some systems. Equally, not keeping any of it around will result in a drastic performance drop.
 
-The solution is to keep as much around as can conveniently fit in memory. MuPDF achieves this using a mechanism known as ``The Store''.
+The solution is to keep as much around as can conveniently fit in memory, but not so much that we start to run out for other needs. MuPDF achieves this using a mechanism known as ``The Store''.
 
 The Store is a mechanism for holding blocks of data likely to be reusable. Whenever MuPDF needs such a block of data, it checks the Store to see if the data is there already - if it is, it can be instantly reused. If not the code forms the data itself, and then puts it into the store.
 
@@ -785,7 +789,7 @@ Whenever MuPDF needs to use a \texttt{fz\_storable}, it first checks to see if t
 
 If no reference is returned, the code creates its own version of the \texttt{fz\_storable}. It calculates its size, and puts it into the Store, together with the same key as before. The Store takes a reference to the object, links it into its data structure, and updates its running total of the size of all the objects within it.
 
-If placing a new object into the store would take it over the limit, it runs through and looks for the least recently used objects to evict to bring the limit down. In order for an object to be considered for eviction, their refcount must be 1. We know that the Store is holding 1 reference to the object - if anything else is, then removing it from the Store won't actually save us any memory.
+If placing a new object into the Store would take it over the limit, it runs through and looks for the least recently used objects to evict to bring the limit down. In order for an object to be considered for eviction, their refcount must be 1. We know that the Store is holding 1 reference to the object - if anything else is, then removing it from the Store won't actually save us any memory.
 
 Regardless of whether the Store can be reduced to a suitable size, the object is always placed into the store. This ensures that the Store's figure for ``amount of memory used by \texttt{fz\_storable}'s'' remains correct (thus ensuring that should objects become evictable, the store size will fall correctly). It also does no harm, because clearly we have managed to allocate enough memory to form the \texttt{fz\_storable} in the first place.
 
@@ -839,20 +843,32 @@ typedef struct fz_store_hash_s
 		{
 			const void *ptr;
 			int i;
-		} pi;
+		} pi; /* 8 or 12 bytes */
 		struct
 		{
 			const void *ptr;
 			int i;
 			fz_irect r;
-		} pir;
+		} pir; /* 24 or 28 bytes */
 		struct
 		{
 			int id;
 			float m[4];
-		} im;
+		} im; /* 20 bytes */
+		struct
+		{
+			unsigned char src_md5[16];
+			unsigned char dst_md5[16];
+			unsigned int ri:2;
+			unsigned int bp:1;
+			unsigned int bpp16:1;
+			unsigned int proof:1;
+			unsigned int src_extras:5;
+			unsigned int dst_extras:5;
+			unsigned int copy_spots:1;
+		} link; /* 36 bytes */
 	} u;
-} fz_store_hash;
+} fz_store_hash; /* 40 or 44 bytes */
 \end{lstlisting}
 
 The caller will always arrange for this structure to be zero filled on entry to the \texttt{make\_hash\_key} call. On exit, it should have been updated with the key details. Implementers may extend the union found in this structure as required, though ideally the size of the overall structure should be minimised to avoid unnecessary work.
@@ -1013,6 +1029,15 @@ If a password is required, you can supply one using \texttt{fz\_authenticate\_pa
 	password: The password string to be checked. Some document
 	specifications do not specify any particular text encoding, so
 	neither do we.
+
+	Returns 0 for failure to authenticate, non-zero for success.
+
+	For PDF documents, further information can be given by examining
+	the bits in the return code.
+
+		Bit 0 => No password required
+		Bit 1 => User password authenticated
+		Bit 2 => Owner password authenticated
 
 	Does not throw exceptions.
 */
@@ -1183,6 +1208,38 @@ fz_link *fz_load_links(fz_context *ctx, fz_page *page);
 
 This returns a linked list of \texttt{fz\_link} structures. \texttt{link->next} gives the next one in the chain.
 
+\section{Color Considerations}
+
+Some formats, notably PDF, contain significant extra information to enable a high quality color managed workflow. The document interface (and the related page interface) have some methods to enable this.
+
+Documents can have a defined `output intent' that governs the color space (and profile) used for rendered output:
+
+\begin{lstlisting}
+/*
+	Find the output intent colorspace if the document has defined one.
+*/
+fz_colorspace *fz_document_output_intent(fz_context *ctx, fz_document *doc);
+\end{lstlisting}
+
+Callers will typically interrogate this before creating their output pixmaps if they want to honour it.
+
+Each page in PDF can be authored with specific spot colors (inks) in mind. Details of these can be obtained from:
+
+\begin{lstlisting}
+/*
+	fz_page_separations: Get the separations details for a page.
+	This will be NULL, unless the format specifically supports
+	separations (such as gproof, or PDF files). May be NULL even
+	so, if there are no separations on a page.
+
+	Returns a reference that must be dropped.
+*/
+fz_separations *fz_page_separations(fz_context *ctx, fz_page *page);
+\end{lstlisting}
+
+The returned object will be NULL for all document formats that do not support spot colors (at the time of writing, all but PDF). For PDF, the object will be NULL for all pages that do not make use of separations.
+
+More information about using these objects can be found in \rjwref{AdvancedRendering}.
 
 \section{Rendering Pages}
 
@@ -1277,6 +1334,27 @@ void fz_run_annot(fz_context *ctx, fz_annot *annot, fz_device *dev, const fz_mat
 
 All three of these functions (\texttt{fz\_run\_page}, \texttt{fz\_run\_page\_contents}, \texttt{fz\_run\_annot}) take an \texttt{fz\_cookie} pointer. The Cookie is a lightweight way of controlling the processing of the page. For more details, see \rjwref{Cookie}. For most simple cases this can be \texttt{NULL}.
 
+\section{Presentations}
+
+Some file formats, such as PDF can be used as `presentations', where pages are displayed as a slideshow for a given length of the time before automatically transitioning to the next page. Support for this is facilitated by having a routine to fetch details of what presentation details have been set for a given page:
+
+\begin{lstlisting}
+/*
+	fz_page_presentation: Get the presentation details for a given page.
+
+	transition: A pointer to a transition struct to fill out.
+
+	duration: A pointer to a place to set the page duration in seconds.
+	Will be set to 0 if no transition is specified for the page.
+
+	Returns: a pointer to the transition structure, or NULL if there is no
+	transition specified for the page.
+*/
+fz_transition *fz_page_presentation(fz_context *ctx, fz_page *page, fz_transition *transition, float *duration);
+\end{lstlisting}
+
+Details of a helpful routine for displaying some of these transitions can be found in \rjwref{Transitions}.
+
 \chapter{The Device interface}
 \label{Device}
 
@@ -1284,7 +1362,7 @@ All three of these functions (\texttt{fz\_run\_page}, \texttt{fz\_run\_page\_con
 
 In many ways, the Device interface is the heart of MuPDF.
 
-When any given document handler is told to run the page (\texttt{fz\_run\_page}) the appropriate document interpreter serialises the page contents as a series of graphical operations, and calls the device interface to perform these actions.
+When any given document handler is told to run the page (\texttt{fz\_run\_page}) the appropriate document interpreter serialises the page contents as a series of graphical operations, and calls the device interface to perform these operations.
 
 Many different implementations of the device interface exist within MuPDF. The most obvious one is the Draw device. When this is called, it renders the graphical objects in turn into a Pixmap.
 
@@ -1310,8 +1388,8 @@ We describe the convenience functions here; implementers of devices can triviall
 Line Art is handled by the device functions to plot paths. See \rjwref{Paths} for more information.
 
 \begin{lstlisting}
-void fz_fill_path(fz_context *ctx, fz_device *dev, const fz_path *path, int even_odd, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
-void fz_stroke_path(fz_context *ctx, fz_device *dev, const fz_path *path, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
+void fz_fill_path(fz_context *ctx, fz_device *dev, const fz_path *path, int even_odd, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
+void fz_stroke_path(fz_context *ctx, fz_device *dev, const fz_path *path, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
 void fz_clip_path(fz_context *ctx, fz_device *dev, const fz_path *path, int even_odd, const fz_matrix *ctm, const fz_rect *scissor);
 void fz_clip_stroke_path(fz_context *ctx, fz_device *dev, const fz_path *path, const fz_stroke_state *stroke, const fz_matrix *ctm, const fz_rect *scissor);
 \end{lstlisting}
@@ -1322,8 +1400,8 @@ void fz_clip_stroke_path(fz_context *ctx, fz_device *dev, const fz_path *path, c
 Text is handled by the device functions to plot text. See \rjwref{Text} for more information.
 
 \begin{lstlisting}
-void fz_fill_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
-void fz_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
+void fz_fill_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
+void fz_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
 void fz_clip_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm, const fz_rect *scissor);
 void fz_clip_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke, const fz_matrix *ctm, const fz_rect *scissor);
 void fz_ignore_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm);
@@ -1337,8 +1415,8 @@ The \texttt{fz\_clip\_text} and \texttt{fz\_clip\_stroke\_text} functions are us
 Images are handled by the device functions to plot images. See \rjwref{Images} for more information.
 
 \begin{lstlisting}
-void fz_fill_image(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, float alpha);
-void fz_fill_image_mask(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
+void fz_fill_image(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, float alpha, const fz_color_params *color_params);
+void fz_fill_image_mask(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
 void fz_clip_image_mask(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, const fz_rect *scissor);
 \end{lstlisting}
 
@@ -1349,7 +1427,7 @@ The \texttt{fz\_clip\_image\_mask} function is used to start a clip. Subsequent 
 Shaded areas (such as radial, linear and mesh based shadings) are rendered by filling a (normally) clipped region with a shade. This is achieved by calling \texttt{fz\_fill\_shade}. See \rjwref{Shadings} for more details.
 
 \begin{lstlisting}
-void fz_fill_shade(fz_context *ctx, fz_device *dev, fz_shade *shade, const fz_matrix *ctm, float alpha);
+void fz_fill_shade(fz_context *ctx, fz_device *dev, fz_shade *shade, const fz_matrix *ctm, float alpha, const fz_color_params *color_params);
 \end{lstlisting}
 
 \subsection{Clipping and Masking}
@@ -1376,7 +1454,7 @@ Stage 1 is terminated and Stage 2 begins by calling \texttt{fz\_end\_mask}. This
 The whole process is then completed by calling \texttt{fz\_pop\_clip}. This renders the mask contents through the soft clip, giving the final results.
 
 \begin{lstlisting}
-void fz_begin_mask(fz_context *ctx, fz_device *dev, const fz_rect *area, int luminosity, fz_colorspace *colorspace, const float *bc);
+void fz_begin_mask(fz_context *ctx, fz_device *dev, const fz_rect *area, int luminosity, fz_colorspace *colorspace, const float *bc, const fz_color_params *color_params);
 void fz_end_mask(fz_context *ctx, fz_device *dev);
 \end{lstlisting}
 
@@ -1437,6 +1515,16 @@ That is to say, the bits given in \texttt{set} are set, and then the bits given 
 The current only documented use of this is for the GProof device to request the Draw device to grid fit its tiled images.
 
 The reason for using Render Flags rather than Device Hints (see \rjwref{DeviceHints}) is that Render Flags can be carried forward though display lists.
+
+\subsection{Device Color Spaces}
+
+Some pages redefine the basic default colorspaces (for color management purposes). This is handled at the device level using the \texttt{fz\_set\_default\_colorspaces} call:
+
+\begin{lstlisting}
+void fz_set_default_colorspaces(fz_context *ctx, fz_device *dev, fz_default_colorspaces *default_cs);
+\end{lstlisting}
+
+The device typically takes a reference to the \texttt{default\_cs} object and refers to it as required.
 
 \section{Cookie}
 \label{Cookie}
@@ -1622,6 +1710,29 @@ During the course of rendering, the draw device may create new temporary interna
 To limit memory use, a typical strategy is to render pages in bands; rather than creating a single pixmap the size of the page and rendering that, create pixmaps for 'slices' across the page, and render them one at a time. The memory savings are not just seen in the cost of the basic pixmap, but also serve to limit the sizes of the internal pixmaps used during rendering.
 
 The cost for this is that the page contents do need to be run through repeatedly. This can be achieved by reinterpreting directly from the file, but that can be expensive. The next device provides a route to help with this.
+
+\subsubsection{Advanced Rendering - Overprint and Spots}
+\label{AdvancedRendering}
+
+Most formats define pages in terms of some fairly simple `well known' colorspaces, like RGB and CMYK. Some formats (notably PDF) are much more powerful, and allow pages to be constructed with a range of non-standard `spot' inks.
+
+When combined with advanced features such as overprinting, care needs to be taken to ensure that the rendering is exactly as expected.
+
+For example, if a PDF page is constructed to render a page using overprinting it only makes strict sense to render this to a CMYK (or a CMYK + Spots) pixmap. With (say) an RGB pixmap, CMYK colors would be mapped down to RGB as they are plotted, losing the information required to correctly overprint later graphical objects.
+
+Nonetheless, while we might want to get a `true' rendition of the page, we might require it ultimately to appear as an RGB pixmap. As such what we really want is to get a `simulation' of how the overprint would work.
+
+One way to work would be to call the draw device and request a CMYK + Spots rendering, and then to require the caller to convert this to their desired target colorspace manually. This is not in keeping with the general desire in MuPDF to encapsulate functionality in a friendly way.
+
+Therefore, the draw device examines the `separations' field of the pixmap that it is called with to decide how to render.
+
+If there is no separations value supplied (i.e. it is NULL), then the draw device assumes that no form of overprint (or overprint simulation) is required.
+
+If there is a separations value, and there is at least one separation that is not entirely disabled, then the draw device will draw internally to a CMYK + Spots pixmap (where the spots are the non-disabled separations from the separations value). This rendering can safely proceed with overprint processing enabled.
+
+At the end of the render, the draw device will convert down from the CMYK + Spots pixmap to the colorspace of the initial pixmap. Any spot colorants present in the initial pixmap will be populated from the rendered one; any spots that aren't will be converted down to process colors.
+
+Thus by creating the initial pixmap passed into the draw device using a separations object with the colorants correctly set to be composite/spots/disabled as required, overprint or overprint simulation can be controlled as required.
 
 \subsection{Display List Device}
 \label{DisplayListDevice}
@@ -1819,13 +1930,60 @@ MuPDF uses many constructs and concepts that, while not deserving of chapters in
 \section{Colorspaces}
 \label{Colorspaces}
 
-In order to represent a given color for a graphical object, we need both the color component values and details of the colorspace that the color is specified in. Color values are defined simply as floats (between 0 and 1 inclusive), and colorspaces are defined using the \texttt{fz\_colorspace} structure.
+In order to represent a given color for a graphical object, we need both the color component values and details of the colorspace that the color is specified in. Color values are defined simply as floats (normally between 0 and 1 inclusive), and colorspaces are defined using the \texttt{fz\_colorspace} structure.
 
 As with many other such structures in MuPDF, these are reference counted objects (see \rjwref{ReferenceCounting}).
 
 \subsection{Basic Colorspaces}
 
-MuPDF contains a set of inbuilt colorspaces that cover most simple requirements. These can
+MuPDF contains a set of inbuilt colorspaces that cover most simple requirements. These are the `device' colorspaces:
+
+\begin{lstlisting}
+/*
+	fz_device_gray: Get colorspace representing device specific gray.
+*/
+fz_colorspace *fz_device_gray(fz_context *ctx);
+
+/*
+	fz_device_rgb: Get colorspace representing device specific rgb.
+*/
+fz_colorspace *fz_device_rgb(fz_context *ctx);
+
+/*
+	fz_device_bgr: Get colorspace representing device specific bgr.
+*/
+fz_colorspace *fz_device_bgr(fz_context *ctx);
+
+/*
+	fz_device_cmyk: Get colorspace representing device specific CMYK.
+*/
+fz_colorspace *fz_device_cmyk(fz_context *ctx);
+
+/*
+	fz_device_lab: Get colorspace representing device specific LAB.
+*/
+fz_colorspace *fz_device_lab(fz_context *ctx);
+\end{lstlisting}
+
+\subsection{Indexed Colorspaces}
+
+MuPDF allows for indexed colorspaces - those where a palette is used to select color values from a (normally) larger colorspace.
+
+These are created using the \texttt{fz\_new\_indexed\_colorspace} call:
+
+\begin{lstlisting}
+fz_colorspace *fz_new_indexed_colorspace(fz_context *ctx, fz_colorspace *base, int high, unsigned char *lookup);
+\end{lstlisting}
+
+\subsection{Separation and DeviceN Colorspaces}
+
+MuPDF Colorspaces are extensible, so specific document handlers can implement their own new spaces. A good example of this is how PDF implements Separation and DeviceN colorspaces.
+
+These are special spaces which represent arbitrary sets of 1 or more colorants. These can either be mapped down to `equivalent' colors in a more standard space, or (depending on the capabilities of the underlying device) processed in their raw form. 
+
+\subsection{Further information}
+
+Further information on Colorspaces can be found within \ref{ColorManagement}.
 
 \section{Pixmaps}
 \label{Pixmaps}
@@ -1836,11 +1994,19 @@ The \texttt{fz\_pixmap} structure is used to represent a 2 dimensional array of 
 
 A pixmap can have an arbitrary number of colour components, together with an optional alpha plane. Every component sample is represented by an unsigned char.
 
-The number of colour components corresponds to the colour space of a pixmap; pixmaps without a colour space must contain no colour planes, just a single alpha plane.
+Pixmaps contain a set of $n$ values per pixel, where $n = c + s + a$. $c$ is the number of color components in the colorspace of a pixmap (or 0, if the colorspace is NULL). $s$ is the number of spot colors in a pixmap (frequently 0). $a$ is 0 if there is no alpha plane, and 1 otherwise.
+
+The initial $c$ entries are referred to as the `process' color components. These can be either additive or subtractive dependent on the colorspace of the pixmap. Additive spaces (such as Gray, or RGB) have value 0 as dark, 255 as light. Subtractive spaces (such as CMYK) have value 0 as light (no ink), 255 as dark (full ink).
+
+The next $s$ entries are the spot colors represented by a pixmap. These are always in subtractive form.
+
+The final entry (if $a = 1$) is the alpha value. This is 0 for completely transparent, 255 for completely opaque.
 
 The data within a pixmap is always stored packed in `chunky' format. For instance, an RGB pixmap would have data in the form: RGBRGBRGBRGB... 
 
 Alpha data is always sent as the last byte in the set corresponding to a pixel. An RGB pixmap with an alpha plane would be therefore have data of the form: RGBARGBARGBA...
+
+A CMYK pixmap with spots for Orange and Green would have data of the form: CMYKOGCMYKOGCMYKOG...
 
 To allow pixmaps to sensibly `subset' one another, pixmaps have a `stride' field. This gives the number of bytes difference from the address of the start of the representation of a pixel to the address of the start of the representation of the same pixel on the scanline below.
 
@@ -1848,75 +2014,17 @@ Normally you'd expect stride to be the same as width multiplied by the number of
 
 Pixmaps can frequently map onto operating system specific bitmap representations, but these sometimes require each scanline to be word aligned - again the provision of stride allows for this. Bottom up bitmaps can be implemented using a negative stride.
 
+\subsection{Premultiplied alpha}
+
+By convention MuPDF holds pixmaps in `premultipled alpha' form. This means that when an alpha plane is present, the values for the process and spot colors are stored scaled by the alpha value.
+
+So for a pixel with \texttt{R}=\texttt{G}=\texttt{B}=1, with solid alpha, we'd have values of 255, but with an alpha value of 0.5 we'd have values of 127 stored.
+
+This format is used because it simplifies many of the plotting and compositing operations used within MuPDF.
+
 \subsection{Saving}
 
-Various functions exist to either save pixmaps to files, or to (more generally) write them to \texttt{fz\_output} streams.
-
-In general, these functions fall into 3 categories of increasing complexity.
-
-Firstly, functions of the form \texttt{fz\_save\_pixmap\_to\_}... take a pixmap and write it to a given filename in the local filesystem.
-
-Secondly, functions of the form \texttt{fz\_write\_pixmap\_to\_}... take a pixmap and write it to a given \texttt{fz\_output}. The use of an \texttt{fz\_output} allows for writing to memory buffers, or even potentially to encrypt or compress further as the write progresses.
-
-Finally, we have an \texttt{fz\_band\_writer} class, that allows images to be written to file in `bands', thus minimising the amount of memory required at any one time. Typically a band writer is created using a call such as \texttt{fz\_new\_png\_band\_writer}:
-
-\begin{lstlisting}
-/*
-	fz_new_png_band_writer: Obtain a fz_band_writer instance
-	for producing PNG output.
-*/
-fz_band_writer *fz_new_png_band_writer(fz_context *ctx, fz_output *out);
-\end{lstlisting}
-
-First, an image header is written, using this writer:
-
-\begin{lstlisting}
-/*
-	fz_write_header: Cause a band writer to write the header for
-	a banded image with the given properties/dimensions etc. This
-	also configures the bandwriter for the format of the data to be
-	passed in future calls.
-
-	w, h: Width and Height of the entire page.
-
-	n: Number of components (including alphas).
-
-	alpha: Number of alpha components.
-
-	xres, yres: X and Y resolutions in dpi.
-
-	pagenum: Page number
-
-	Throws exception if incompatible data format.
-*/
-void fz_write_header(fz_context *ctx, fz_band_writer *writer, int w, int h, int n, int alpha, int xres, int yres, int pagenum);
-\end{lstlisting}
-
-This has the effect of setting the size and format of the data for the complete image. The caller then proceeds to render the page in horizontal strips from the top to the bottom, and pass them in to \texttt{fz\_write\_band}:
-
-\begin{lstlisting}
-/*
-	fz_write_band: Cause a band writer to write the next band
-	of data for an image.
-
-	stride: The byte offset from the first byte of the data
-	for a pixel to the first byte of the data for the same pixel
-	on the row below.
-
-	band_height: The number of lines in this band.
-
-	samples: Pointer to first byte of the data.
-*/
-void fz_write_band(fz_context *ctx, fz_band_writer *writer, int stride, int band_height, const unsigned char *samples);
-\end{lstlisting}
-
-The band writer keeps track of how much data has been written, and when an entire page has been sent, it writes out any image trailer required.
-
-For formats that can accommodate multiple pages, a new call to \texttt{fz\_write\_header} will start the process again. Otherwise (or after the final image), the band writer can be neatly discarded by calling:
-
-\begin{lstlisting}
-void fz_drop_band_writer(fz_context *ctx, fz_band_writer *writer);
-\end{lstlisting}
+For information on saving pixmaps, see \rjwref{OutputFormats}.
 
 \section{Bitmaps}
 \label{Bitmaps}
@@ -4359,7 +4467,7 @@ typedef fz_off_t (fz_output_tell_fn)(fz_context *ctx, void *state);
 
 \section{Overview}
 
-MuPDFs built in renderer (see /rjwref{DrawDevice}) produces in-memory arrays of contone values for areas of document pages. The MuPDF library includes routines to be able to output these areas to a number of different output formats.
+MuPDFs built in renderer (see \rjwref{DrawDevice}) produces in-memory arrays of contone values for areas of document pages. The MuPDF library includes routines to be able to output these areas to a number of different output formats.
 
 Typically these devices all follow a similar pattern, enabling either full page or banded rendering to be performed according to the requirements of the particular application.
 
@@ -4375,7 +4483,7 @@ fz_band_writer *fz_new_XXX_band_writer(fz_context *ctx, fz_output *out);
 
 The first function outputs a pixmap to a utf-8 encoded filename as an \texttt{XXX} formatted file. If the pixmap is not in a suitable colorspace/alpha configuration, then an exception will be thrown.
 
-The second function does the same thing, but to a given \texttt{fz\_output} rather than to a named file.
+The second function does the same thing, but to a given \texttt{fz\_output} rather than to a named file. The use of an \texttt{fz\_output} allows for writing to memory buffers, or even potentially to encrypt or compress further as the write progresses.
 
 The third function returns an \texttt{fz\_band\_writer} to do the same thing.
 
@@ -4383,7 +4491,17 @@ The third function returns an \texttt{fz\_band\_writer} to do the same thing.
 
 The purpose of the \texttt{fz\_band\_writer} mechanism is to allow banded rendering; rather than having to allocate a pixmap large enough to hold the entire page at once, we instead render bands across the page and feed those to the \texttt{fz\_band\_writer} which assembles them into a properly formed \texttt{XXX} format output stream.
 
-Having created a \texttt{fz\_band\_writer} using one of the creation functions defined in the following sections, the page output starts by calling \texttt{fz\_write\_header}. This both configures the band writer for the type of data that is being sent, and triggers the output of the file header.
+Typically a band writer is created using a call such as \texttt{fz\_new\_png\_band\_writer}:
+
+\begin{lstlisting}
+/*
+	fz_new_png_band_writer: Obtain a fz_band_writer instance
+	for producing PNG output.
+*/
+fz_band_writer *fz_new_png_band_writer(fz_context *ctx, fz_output *out);
+\end{lstlisting}
+
+The page output starts by calling \texttt{fz\_write\_header}. This both configures the band writer for the type of data that is being sent, and triggers the output of the file header:
 
 \begin{lstlisting}
 /*
@@ -4394,7 +4512,7 @@ Having created a \texttt{fz\_band\_writer} using one of the creation functions d
 
 	w, h: Width and Height of the entire page.
 
-	n: Number of components (including alphas).
+	n: Number of components (including spots and alphas).
 
 	alpha: Number of alpha components.
 
@@ -4402,12 +4520,16 @@ Having created a \texttt{fz\_band\_writer} using one of the creation functions d
 
 	pagenum: Page number
 
+	cs: Colorspace (NULL for bitmaps)
+
+	seps: Separation details (or NULL).
+
 	Throws exception if incompatible data format.
 */
-void fz_write_header(fz_context *ctx, fz_band_writer *writer, int w, int h, int n, int alpha, int xres, int yres, int pagenum);
+void fz_write_header(fz_context *ctx, fz_band_writer *writer, int w, int h, int n, int alpha, int xres, int yres, int pagenum, const fz_colorspace *cs, fz_separations *seps);
 \end{lstlisting}
 
-Next, the caller should render bands of the page in turn, and pass them in to \texttt{fz\_write\_band}.
+This has the effect of setting the size and format of the data for the complete image. The caller then proceeds to render the page in horizontal strips from the top to the bottom, and pass them in to \texttt{fz\_write\_band}:
 
 \begin{lstlisting}
 /*
@@ -4425,9 +4547,9 @@ Next, the caller should render bands of the page in turn, and pass them in to \t
 void fz_write_band(fz_context *ctx, fz_band_writer *writer, int stride, int band_height, const unsigned char *samples);
 \end{lstlisting}
 
-Once enough data has been sent, the band writer automatically writes any trailer for the file.
+The band writer keeps track of how much data has been written, and when an entire page has been sent, it writes out any image trailer required.
 
-At this point, the caller can either call \texttt{fz\_write\_header} to start a new page, or they can call \texttt{fz\_drop\_band\_writer} to clean up.
+For formats that can accommodate multiple pages, a new call to \texttt{fz\_write\_header} will start the process again. Otherwise (or after the final image), the band writer can be neatly discarded by calling:
 
 \begin{lstlisting}
 void fz_drop_band_writer(fz_context *ctx, fz_band_writer *writer);
@@ -4523,6 +4645,28 @@ Because PNG is such a useful and widely used format, we have another couple of f
 */
 fz_buffer *fz_new_buffer_from_image_as_png(fz_context *ctx, fz_image *image);
 fz_buffer *fz_new_buffer_from_pixmap_as_png(fz_context *ctx, fz_pixmap *pixmap);
+\end{lstlisting}
+
+\section{PSD}
+
+The PSD format is used by photoshop. It is especially useful as it allows the inclusion of large numbers of spot colors, together with their `equivalent color' information. This means it is the format of choice for outputting color correct renders with spot colors and correct overprint processing. PSD files can be written with grayscale, RGB or CMYK pixmaps, plus optional spots, with or without alpha.
+
+\begin{lstlisting}
+/*
+	fz_save_pixmap_as_psd: Save a pixmap as a PSD image file.
+*/
+void fz_save_pixmap_as_psd(fz_context *ctx, fz_pixmap *pixmap, const char *filename);
+
+/*
+	Write a pixmap to an output stream in PSD format.
+*/
+void fz_write_pixmap_as_psd(fz_context *ctx, fz_output *out, const fz_pixmap *pixmap);
+
+/*
+	fz_new_psd_band_writer: Obtain a fz_band_writer instance
+	for producing PSD output.
+*/
+fz_band_writer *fz_new_psd_band_writer(fz_context *ctx, fz_output *out);
 \end{lstlisting}
 
 \section{PWG/CUPS}
@@ -6142,6 +6286,16 @@ The first section of the file deals with the plotters that are to be built into 
 
 \begin{lstlisting}
 /*
+	Enable the following for spot (and hence overprint/overprint
+	simulation) capable rendering. This forces FZ_PLOTTERS_N on.
+*/
+#define FZ_ENABLE_SPOT_RENDERING
+\end{lstlisting}
+
+If this is enabled (i.e. if spot rendering capabilities are required) then all the plotters in the following section are implictly enabled. For people that do not need spot rendering (i.e. anyone dealing with on screen display where overprint simulation is not required) can turn this off, and further configure the next options: 
+
+\begin{lstlisting}
+/*
 	Choose which plotters we need.
 	By default we build the greyscale, RGB and CMYK plotters in,
 	but omit the arbitrary plotters. To avoid building
@@ -7024,6 +7178,11 @@ Usage: mudraw [options] file [pages]
         -L      low memory mode (avoid caching, clear objects after each
                 page)
         -P      parallel interpretation/rendering
+		-N      disable ICC workflow ("N"o color management)
+		-O      Control spot rendering
+		          0 = No spot rendering
+		          1 = Overprint simulation
+		          2 = Full spot rendering
 
         -y l    List the layer configs to stderr
         -y -    Select layer config (by number)
@@ -7156,9 +7315,177 @@ usage: mutool show [options] file.pdf [grep] [xref] [trailer] [pagetree] [outlin
         -e      print encoded streams (don't decode)
 \end{lstlisting}
 
+\chapter{Color Management}
+\label{ColorManagement}
+
+\section{Overview}
+
+MuPDF can optionally make use of a color management engine to offer a fully color managed workflow.
+
+Its use of the engine is encapsulated within the \texttt{fz\_cmm\_engine} structure. Currently we provide an implementation of this structure using a modified version of LCMS2, but systems with other CMM engines in already can use those instead by reimplementing the functions therein.
+
+By default, on start-up, MuPDF has no color management engine enabled. This keeps the library size down (and performance up!) for people who do not wish to use it.
+
+The relevant functions are:
+
+\begin{lstlisting}
+/*
+	fz_set_cmm_engine: Set the color management engine to
+	be used. This should only ever be called on the "base"
+	context before cloning it, and before opening any files.
+
+	Attempting to change the engine in use once a file has
+	been opened, or to use different color management engine
+	for the same file in different threads will lead to
+	undefined behaviour, including crashing.
+
+	Using different ICC engines for different files using
+	different sets of fz_contexts should theoretically be
+	possible.
+*/
+void fz_set_cmm_engine(fz_context *ctx, const fz_cmm_engine *engine);
+
+/*
+	Currently we only provide a single color management
+	engine, based on a (modified) LCMS2.
+
+	An unmodified LCMS2 should work too, but only when restricted
+	to a single thread.
+*/
+extern fz_cmm_engine fz_cmm_engine_lcms;
+\end{lstlisting}
+
+Thus to enable the color managed workflow using LCMS, call:
+
+\begin{lstlisting}
+fz_set_cmm_engine(ctx, &fz_cmm_engine_lcms); 
+\end{lstlisting}
+
+It is best to do this immediately after creating the base context.
+
+It is possible to switch between ICC and non-ICC workflows in the same instance of MuPDF (and even to use the two simultaneously). It is, however, not generally possible to swap a given context once operations on that context have started. This is because any outstanding \texttt{fz\_colorspace}s (such as those found within the store) will still refer to the wrong color management implementation!
+
+\chapter{Transitions}
+\label{Transitions}
+
+\section{Overview}
+
+There are applications when it can be useful to treat document formats as slideshows - a form of poor man's PowerPoint if you will.
+
+Indeed the PDF format specification includes details of how to define the hold time, transition time and transition style within a PDF file. 
+
+The core MuPDF library is never responsible for actually presenting a page to the user, so it is therefore not possible to expect it to cope with handling all the work required by such transitions.
+
+What it can do is to provide some functions to aid the caller in the task of querying the transitions required and generating bitmaps of various stages of common transitions.
+
+\section{Querying}
+
+We define a structure type to hold the details of arbitrary transitions, together with some opaque state:
+
+\begin{lstlisting}
+enum {
+	FZ_TRANSITION_NONE = 0, /* aka 'R' or 'REPLACE' */
+	FZ_TRANSITION_SPLIT,
+	FZ_TRANSITION_BLINDS,
+	FZ_TRANSITION_BOX,
+	FZ_TRANSITION_WIPE,
+	FZ_TRANSITION_DISSOLVE,
+	FZ_TRANSITION_GLITTER,
+	FZ_TRANSITION_FLY,
+	FZ_TRANSITION_PUSH,
+	FZ_TRANSITION_COVER,
+	FZ_TRANSITION_UNCOVER,
+	FZ_TRANSITION_FADE
+};
+
+typedef struct fz_transition_s
+{
+	int type;
+	float duration; /* Effect duration (seconds) */
+
+	/* Parameters controlling the effect */
+	int vertical; /* 0 or 1 */
+	int outwards; /* 0 or 1 */
+	int direction; /* Degrees */
+	/* Potentially more to come */
+
+	/* State variables for use of the transition code */
+	int state0;
+	int state1;
+} fz_transition;
+\end{lstlisting}
+
+Armed with such a structure, we can call a function to get it filled out:
+
+\begin{lstlisting}
+/*
+	fz_page_presentation: Get the presentation details for a given page.
+
+	transition: A pointer to a transition struct to fill out.
+
+	duration: A pointer to a place to set the page duration in seconds.
+	Will be set to 0 if no transition is specified for the page.
+
+	Returns: a pointer to the transition structure, or NULL if there is no
+	transition specified for the page.
+*/
+fz_transition *fz_page_presentation(fz_context *ctx, fz_page *page, fz_transition *transition, float *duration);
+\end{lstlisting}
+
+This structure is defined to be sufficient to encapsulate the currently defined PDF transition types; it may be extended in future if other formats require more expressiveness.
+
+Callers are free to directly implement their transitions using the information herein, or else they can make use of a helper function.
+
+\section{Transition Rendering Helper}
+
+This helper function is largely independent of the rest of MuPDF, and will be dropped from the library if it is not used.
+
+Given rendered pixmaps of the start/end of the transition, this will generate the required frame of the transition into the supplied target pixmap:
+
+\begin{lstlisting}
+/*
+	fz_generate_transition: Generate a frame of a transition.
+
+	tpix: Target pixmap
+	opix: Old pixmap
+	npix: New pixmap
+	time: Position within the transition (0 to 256)
+	trans: Transition details
+
+	Returns 1 if successfully generated a frame.
+*/
+int fz_generate_transition(fz_context *ctx, fz_pixmap *tpix, fz_pixmap *opix, fz_pixmap *npix, int time, fz_transition *trans);
+\end{lstlisting}
+
+It is still the callers responsibility to drive this, to display the updated pixmaps, and to generate the time field as appropriate from the actual real clock values.
+
+\chapter{PDF Page Manipulation}
+\label{PDFPageManipulation}
+
 \chapter{Platform specifics}
 \label{PlatformSpecifics}
 
+\section{Overview}
+
+MuPDF is designed to compile and run on almost any platform that supports a standard C runtime library. In general, we try to restrict our use of C features later than C89, and to rely only on Posix standard APIs.
+
+Our primary development platforms are Linux (various versions, 32 and 64bit using both Clang and GCC compilers) and Windows (32 and 64bit, using MSVC 2005).
+
+The choice of MSVC 2005 is deliberate; executables produced by this version run on every Windows version from XP (Service Pack 3) up to the latest (Windows 10 Creators Update, at the time of writing). More importantly, VS2005 solutions/projects can be imported into later versions, whereas projects from later versions cannot be used in earlier ones.
+
+MSVC 2005 is not truly standards compliant, but it's close enough for our purposes. Neither is Windows Posix compliant, but in the cases where a Posix API is required and not available, we provide windows specific code, often by implementing an equivalent API using Windows platform calls.
+
+We do not currently actively use MacOS for developing MuPDF, though we have in the past. MuPDF compiles and runs fine on MacOS, and we intend to keep it so. There is no MacOS specific code in the MuPDF codebase; the MuPDF viewer for MacOS is just the standard linux X11 one. Similarly GSView 6.0 for Mac is a QT based application that uses the same code for Linux and Mac.
+
+MuPDF has language bindings for Android, iOS, Java and JavaScript.
+
+\section{C library}
+
+On all platforms, MuPDF builds a C library that offers the standard C level API as defined within this book. By default we build a static library. Dynamic libraries can be built (and indeed are used on platforms such as Android), but we do not guarantee ABI compatibility between releases, so we do not provide this on all platforms by default.
+
+The standard Unix makefile requires GNU Make, and detects the presence of the third party libraries within the \texttt{thirdparty} directory. If present, these are used in preference to any system libraries.
+
+Our libraries frequently contain bug fixes to the standard ones, and we attempt to pass such fixes upstream to the main package maintainers. Given that all our regression and quality control testing happens with the versions that we supply, we prefer people to use our versions, and will frequently ask for bug reports to be reproduced using such a build before investing too much time in trying to solve them. 
 
 \section{Android viewer}
 \section{Desktop Java}
@@ -7180,98 +7507,80 @@ usage: mutool show [options] file.pdf [grep] [xref] [trailer] [pagetree] [outlin
 \chapter{Naming conventions and style}
 \label{NamingConventions}
 
-<h2>Names</h2>
+The function and variable names within MuPDF have been carefully chosen to follow standard conventions. By consistently using the same terms, we hope that it will become easy to remember things like the reference counting behaviour of functions, and minimise the need to look things up in the documentation.
 
-<p>
-Functions should be named according to one of the following schemes:
+We require any code submitted to MuPDF to follow the same conventions, and would encourage people to follow the same style in their own code that interfaces with MuPDF.
 
-<ul>
-<li> verb_noun
-<li> verb_noun_with_noun
-<li> noun_attribute
-<li> set_noun_attribute
-<li> noun_from_noun -- convert from one type to another (avoid noun_to_noun)
-</ul>
+\section{Names}
 
-<p>
+Function should be named according to one of the following schemes:
+
+\begin{itemize}
+\item verb\_noun
+\item verb\_noun\_with\_noun
+\item noun\_attribute
+\item set\_noun\_attribute
+\item noun\_from\_noun -- convert from one type to another (avoid noun\_to\_noun)
+\end{itemize}
+
 Prefixes are mandatory for exported functions, macros, enums, globals and types.
 
-<ul>
-<li> fz for common code
-<li> pdf, xps, etc., for interpreter specific code
-</ul>
+\begin{itemize}
+\item fz for common code
+\item pdf, xps, etc., for interpreter specific code
+\end{itemize}
 
-<p>
 Prefixes are optional (but encouraged) for private functions and types.
 
-<p>
 Avoid using 'get' as this is a meaningless and redundant filler word.
 
-<p>
 These words are reserved for reference counting schemes:
 
-<ul>
-<li> new, find, load, open, keep -- return objects that you are responsible for freeing.
+\begin{itemize}
+\item new, find, load, open, keep -- return objects that you are responsible for freeing.
 
-<li> drop -- relinquish ownership of the object passed in.
-</ul>
+\item drop -- relinquish ownership of the object passed in.
+\end{itemize}
 
-<p>
 When searching for an object or value, the name used depends on whether
 returning the value is passing ownership:
 
-<ul>
-<li> lookup -- return a value or borrowed pointer
-<li> find -- return an object that the caller is responsible for freeing
-</ul>
+\begin{itemize}
+\item lookup -- return a value or borrowed pointer
+\item find -- return an object that the caller is responsible for freeing
+\end{itemize}
 
-<h2>Types</h2>
+\section{Types}
 
-<p>
 Various different integer types are used throughout MuPDF.
 
-<p>
 In general:
 
-<ul>
-<li> int is assumed to be 32bit at least.
-<li> short is assumed to be exactly 16 bits.
-<li> char is assumed to be exactly 8 bits.
-<li> array sizes, string lengths, and allocations are measured using size_t.
-        size_t is 32bit in 32bit builds, and 64bit on all 64bit builds.
-<li> buffers of data use unsigned chars (or uint8_t).
-<li> Offsets within files/streams are represented using fz_off_t.
-        fz_off_t is 64bits in 64bit builds, or in 32bit builds with FZ_LARGEFILE defined.
+\begin{itemize}
+\item int is assumed to be 32bit at least.
+\item short is assumed to be exactly 16 bits.
+\item char is assumed to be exactly 8 bits.
+\item array sizes, string lengths, and allocations are measured using size\_t.
+        size\_t is 32bit in 32bit builds, and 64bit on all 64bit builds.
+\item buffers of data use unsigned chars (or uint8\_t).
+\item Offsets within files/streams are represented using fz\_off\_t.
+        fz\_off\_t is 64bits in 64bit builds, or in 32bit builds with FZ\_LARGEFILE defined.
         Otherwise it is a native int (so 32bit in 32bit builds).
-</ul>
+\end{itemize}
 
-<p>
 In addition, we use floats (and avoid doubles when possible), assumed to be IEEE compliant.
 
-<h2>Reference counting</h2>
+\section{Reference counting}
 
-<p>
-Reference counting uses special words in functions to make it easy to remember
-and follow the rules.
+Reference counting uses special words in functions to make it easy to remember and follow the rules.
 
-<p>
 Words that take ownership: new, find, load, open, keep.
 
-<p>
 Words that release ownership: drop.
 
-<p>
-If an object is returned by a function with one of the special words that take
-ownership, you are responsible for freeing it by calling "drop" or "free", or
-"close" before you return. You may pass ownership of an owned object by return
-it only if you name the function using one of the special words.
+If an object is returned by a function with one of the special words that take ownership, you are responsible for freeing it by calling "drop" or "free", or "close" before you return. You may pass ownership of an owned object by returning it only if you name the function using one of the special words.
 
-<p>
-Any objects returned by functions that do not have any of these special words,
-are borrowed and have a limited life time. Do not hold on to them past the
-duration of the current function, or stow them away inside structs. If you need
-to keep the object for longer than that, you have to either "keep" it or make
-your own copy.
+Any objects returned by functions that do not have any of these special words, are borrowed and have a limited life time. Do not hold on to them past the duration of the current function, or stow them away inside structs. If you need to keep the object for longer than that, you have to either "keep" it or make your own copy.
 
 \backmatter
 \printindex
