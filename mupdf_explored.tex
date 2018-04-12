@@ -47,7 +47,7 @@
 
 \chapter{Preface}
 
-This is the beginnings of a book on MuPDF. It is far from complete, but offers useful information as far as it goes. We offer it with the latest release of MuPDF (currently 1.12) in the hopes it will be useful.
+This is the beginnings of a book on MuPDF. It is far from complete, but offers useful information as far as it goes. We offer it with the latest release of MuPDF (currently 1.13) in the hopes it will be useful.
 
 Any feedback, corrections or suggestions are welcome. Please visit \url{bugs.ghostscript.com} and open a bug with ``MuPDF'' as the product, and ``Documentation'' as the component.
 
@@ -56,9 +56,9 @@ We will endeavour to make new versions available from the Documentation section 
 
 \chapter{Acknowledgements}
 
-Many thanks are due to Tor Andersson for creating MuPDF, to everyone who has contributed to it over the years, and to all my colleagues at Artifex Software for providing an environment in which it could grow to maturity. Particular thanks are due to Sebastian Rasmussen for patiently proof-reading the book and suggesting numerous improvements.
+Many thanks are due to Tor Andersson for creating MuPDF, to everyone who has contributed to it over the years, and to all my colleagues at Artifex Software for providing an environment in which it could grow, and nursing it through to maturity. Particular thanks are due to Sebastian Rasmussen for patiently proof-reading the book through its many revisions, and suggesting numerous improvements.
 
-Finally, Helen Rogers is due an honourable mention for putting up with me.
+Finally, many thanks are due to Helen Rogers, for putting up with me.
 
 \tableofcontents
 
@@ -282,7 +282,7 @@ The solution to these seemingly conflicting requirements is the Context (\texttt
 Every caller to MuPDF should create a Context at the start of its use of the library, and destroy it at the end. This Context (or one `cloned' from it) will then be passed in to every MuPDF API call.
 
 \begin{description}
-\item[Global State] At its simplest, the Context contains global settings for the library. For instance, the levels of anti-aliasing used by the text and line art rendering routines are set in the Context, as is the default style sheet for Epub or FB2 files. In addition, the library stores its own private information there too.
+\item[Global State] At its simplest, the Context contains global settings for the library. For instance, the default levels of anti-aliasing used by the text and line art rendering routines are set in the Context, as is the default style sheet for EPUB or FB2 files. In addition, the library stores its own private information there too.
 \item[Error handling] All error handling within MuPDF is done using the \texttt{fz\_try}\slash \texttt{fz\_catch} constructs; see \rjwref{ErrorHandling} for more details.
 
 These constructs can be nested, so rely on an exception stack maintained within the context. As such it is vitally important that no two threads use the same context at the same time.  See \rjwref{MultiThreading} for more information.
@@ -1005,7 +1005,7 @@ int fz_authenticate_password(fz_context *ctx, fz_document *doc, const char *pass
 
 \section{Handling reflowable documents}
 
-Some document types (such as Epub) require the contents to be laid out before they can be rendered. This is done by calling \texttt{fz\_layout\_document}:
+Some document types (such as EPUB) require the contents to be laid out before they can be rendered. This is done by calling \texttt{fz\_layout\_document}:
 
 \begin{lstlisting}
 /*
@@ -1136,7 +1136,7 @@ fz_annot *fz_first_annot(fz_context *ctx, fz_page *page);
 fz_annot *fz_next_annot(fz_context *ctx, fz_annot *annot);
 \end{lstlisting}
 
-Annotations are reference counted and can be kept and dropped as usual:
+Annotations are reference counted and can be kept and dropped as usual.
 
 \begin{lstlisting}
 /*
@@ -1150,6 +1150,7 @@ fz_annot *fz_keep_annot(fz_context *ctx, fz_annot *annot);
 */
 void fz_drop_annot(fz_context *ctx, fz_annot *annot);
 \end{lstlisting}
+
 
 They can also be bounded, by passing a rectangle to \texttt{fz\_bound\_annot}:
 
@@ -1309,7 +1310,7 @@ void fz_run_page_contents(fz_context *ctx, fz_page *page, fz_device *dev, const 
 void fz_run_annot(fz_context *ctx, fz_annot *annot, fz_device *dev, const fz_matrix *transform, fz_cookie *cookie);
 \end{lstlisting}
 
-These functions enable viewer applications to generate separate display lists for page contents, and annotations. This can be useful if annotations are frequently changed, as it allows regeneration/redraw to happen on a per-annotation rather than per-page level.
+These functions enable viewer applications to generate separate display lists for page contents and annotations. This can be useful if annotations are frequently changed, as it allows regeneration/redraw to happen on a per-annotation rather than per-page level.
 
 All three of these functions (\texttt{fz\_run\_page}, \texttt{fz\_run\_page\_contents}, \texttt{fz\_run\_annot}) take a \texttt{fz\_cookie} pointer. The Cookie is a lightweight way of controlling the processing of the page. For more details, see \rjwref{Cookie}. For most simple cases this can be \texttt{NULL}.
 
@@ -1516,7 +1517,7 @@ enum
 
 \section{Inbuilt Devices}
 
-MuPDF comes with a selection of devices built in, though this should not be taken as a definitive list. It is expected that other devices will be written to extend MuPDF - indeed some software built from MuPDF already includes their own devices.
+MuPDF comes with a selection of devices built in, though this should not be taken as a definitive list. It is expected that other devices will be written to extend MuPDF - indeed some embeddings of MuPDF already include their own devices.
 
 \subsection{BBox Device}
 
@@ -1876,9 +1877,7 @@ A CMYK pixmap with spots for Orange and Green would have data of the form: CMYKO
 
 To allow greater flexibility in the layout of the underlying memory blocks used by pixmaps, they have a `stride' field. This gives the number of bytes difference from the address of the start of the representation of a pixel to the address of the start of the representation of the same pixel on the scanline below.
 
-Normally you'd expect stride to be the same as width multiplied by the number of components in the image (including alpha), but in specific instances this can usefully vary.
-
-In order to create pixmaps that refer to specific `sub areas' of larger pixmaps, the stride value for the sub-pixmap will be larger than expected (identical to that of the original pixmap), to account for the extra pixels from each original line that are not addressed.
+Normally you'd expect stride to be the same as width multiplied by the number of components in the image (including alpha), but for some cases (notably when we have pixmaps that represent a sub-rectangle of larger pixmaps) these can be much larger.
 
 Pixmaps can frequently map onto operating system specific bitmap representations, but these sometimes require each scanline to be word aligned - again the provision of stride allows for this. Bottom up bitmaps can be implemented using a negative stride.
 
@@ -1956,7 +1955,7 @@ The usual reference counting behaviour applies to \texttt{fz\_halftone}s, with \
 
 The \texttt{fz\_image} structure is used to represent a generic Image object in MuPDF. It can be viewed as an encapsulation from which both a rendering of an image (as a \texttt{fz\_pixmap}) and (often) the original source data can be retrieved.
 
-Further discussion of \texttt{fz\_image}s is deferred to \rjwref{Image} in Part 2. While it is perfectly permissible for a caller to create images, in most cases they will treat them as `black boxes' to just be passed around.
+Further discussion of \texttt{fz\_image}s is deferred to \rjwref{Images} in Part 2. While it is perfectly permissible for a caller to create images, in most cases they will treat them as `black boxes' to just be passed around.
 
 \section{Buffers}
 \label{Buffers}
@@ -2102,7 +2101,7 @@ fz_point *fz_transform_point(fz_point *restrict point, const fz_matrix *restrict
 fz_point *fz_transform_point_xy(fz_point *restrict point, const fz_matrix *restrict transform, float x, float y);
 \end{lstlisting}
 
-Rectangles can be transformed using the following function, which allows for the fact that transforms may `flip' the rectangle (i.e. that a minimum coordinate may end up as a maximum one after transformation):
+Rectangles can be transformed using the following function, which allows for the fact that the image of a rectangle may `flip' the rectangle (i.e. that a minimum coordinate may end up as a maximum one after translation, and vice versa):
 
 \begin{lstlisting}
 /*
@@ -2281,7 +2280,7 @@ fz_matrix *fz_invert_matrix(fz_matrix *inverse, const fz_matrix *matrix);
 
 \section{Paths}
 
-PDF (or, equivalently, Postscript) style paths are represented using the \begin{tt}fz\_path\end{tt} structure.  A PDF path consists of a sequence of instructions describing the movement of a `pen' around a given path.
+Postscript (or equivalently PDF) style paths are represented using the \begin{tt}fz\_path\end{tt} structure.  A postscript path consists of a sequence of instructions describing the movement of a `pen' around a given path.
 
 The first instruction is always a `move' to a specified location. Subsequent instructions move the pen position onwards to new positions on the page, either via straight lines, or via curves described by given control points. Such instructions can either be made with the pen up or down.
 
@@ -2300,17 +2299,17 @@ As \texttt{fz\_text} objects are the only text objects passed across the device 
 
 Ideally, given any input format we would like to be able to extract any output format from it (including the same format) with no loss of data. This means that our \texttt{fz\_text} objects need to be expressive enough to represent the super-set of functionality of all input formats out there, even if we do not currently make use of all the information.
 
-While the idea of a single representation being enough to encapsulate each glyph from the text on the page in turn, is attractive, this is not the case. Indeed it's not even possible to trivially define the order in which glyphs will be sent!
+While the idea of a single representation being enough to encapsulate each glyph from the text on the page in turn is attractive, this is not the case. Indeed, it's not even possible to trivially define the order in which glyphs will be sent!
 
 It would be nice to think that text would be held in the source file in the order in which it should be displayed on the page, but this is frequently not the case.
 
-The `logical order' of text can be thought of as being the order in which text would be read out loud, if you were reading from a page. In many cases (such as for ePub files), this is the order in which the information is stored within the file itself. Sadly, for other formats this is not always the case.
+The `logical order' of text can be thought of as being the order in which text would be read out loud, if you were reading from the page. In many cases (such as for EPUB files), this is the order in which the information is stored within the file itself. Sadly, for other formats this is not always the case.
 
-PDF files in particular have no particular defined ordering in which text is sent - as each glyph is individually positioned on the page, files can (and do) send them in any order they feel like. While most PDF files containing European languages will tend to send text in the expected logical ordering, there is no guarantee that this will always be the case. This likelihood gets even more remote as we start to deal with right-to-left text, top to bottom text, far eastern scripts, or text in multiple different scripts or languages.
+PDF files in particular have no particular defined ordering in which text is sent - as each glyph is individually positioned on the page, files can (and do) send them in any order they feel like. While most PDF files containing European languages will tend to send text in the expected logical ordering, there is no guarantee that this will always be the case. This likelihood gets even more remote as we start to deal with right-to-left text, top-to-bottom text, far eastern scripts, or texts in multiple different scripts or languages.
 
-The classic case logical order may differ noticeably from rendered order is for `bidirectional' text. Even if the internal document representation is in logical order, the order in which the text will actually be displayed can be quite different. Consider for instance, some source text in Hebrew. If the individual glyphs are A,B,C,D etc, then the right-to-left nature of Hebrew text means that these will be displayed in the order `DCBA' on the page.
+The classic case where logical order may differ noticeably from rendered order, is for `bidirectional' text\footnote{Text which has a mixture of left-to-right and right-to-left blocks}. Even if the internal document representation is in logical order, the order in which the text will actually be displayed can be quite different. Consider, for instance, some source text in Hebrew. If the individual glyphs are A,B,C,D etc, then the right-to-left nature of Hebrew means that these will be displayed in the order `DCBA' on the page.
 
-If however, we have conventional western (arabic) numerals on the page, interspersed within the Hebrew text, this is still written left-to-right. So A,B,C,D,1,2,3,4,E,F,G would appear as `GFE01234DCBA'.
+If, however, we have conventional western (arabic) numerals on the page, interspersed within the Hebrew text, this is still written left-to-right. So A,B,C,D,1,2,3,4,E,F,G would appear as `GFE12DCBA'.
 
 The algorithm dealing with such strings is fairly complex, and so further discussion of this for the interested reader is best redirected to the `Unicode Bidirectional Algorithm' as defined in Technical Report 9 at \url{http://unicode.org/reports/tr9}.
 
@@ -2320,13 +2319,13 @@ The simplest example for this is that of a ligature. A piece of source text migh
 
 This concept of their being a `transformation' step from the input text to the output rendered form is extended massively when dealing with non-western scripts. For Arabic and Indic scripts in particular (and Eastern scripts in general), groups of characters are frequently combined together to give increasingly complex glyphs. This process is referred to as shaping, and it is generally applied after the bidirectional algorithm has been run.
 
-Different source formats cope with this in different ways. The text strings within a PDF file have already had the layout and shaping process applied - they are literally a list of positioned glyphs to be displayed on the page. The unicode values for the original text are frequently not there at all (and when they are they require specific work to derive).
+Different source formats cope with this in different ways. The text strings within a PDF file have already had the layout and shaping process applied - they are literally a list of positioned glyphs to be displayed on the page. Each glyph is identified by a `glyph-id' - a simple index of the glyph within a font, with no meaning other than that. The unicode values for the original text are frequently not there at all (and when they are they require specific work to derive).
 
-Other formats, such as EPUB, take the opposite approach, by specifying the Unicode values directly, and leaving the displaying application (i.e. MuPDF) to do the conversion to glyphs).
+Other formats, such as EPUB, take the opposite approach, by specifying the Unicode values directly, and leaving the displaying application (i.e. MuPDF) to do the conversion to glyphs (including the `shaping' operation).
 
 To cope with these different input requirements, and to allow us to translate one format into another, we require \texttt{fz\_text} objects to encapsulate both forms of data at the same time.
 
-Accordingly, our \texttt{fz\_text} object represents a block of text, including font style and position, together with both unicode and glyph data (subject to the availability of the information in the original file). Wherever possible we try to provide that data in logical order, though no guarantee can be made of this.
+Accordingly, our \texttt{fz\_text} object represents a block of text, including font style and position, together with both unicode and glyph data (subject to the availability of the information in the original file). Where possible we try to provide this information in logical order, though no guarantee can be made of this.
 
 If more information is required, then details of the current implementation are included in \rjwref{Text} in Part 2, otherwise just use it as a simple black box.
 
@@ -2864,7 +2863,7 @@ Occasionally, it can be useful to interrogate the properties of a stream, for ex
 
 While not implemented currently, perhaps in future a particular stream user might want to interrogate information about the Mimetype of the stream, or its compression ratios.
 
-To allow this, we have an extensible system to request Meta operations on a stream. The \texttt{fz\_stream\_meta} function allows such calls to be made, with a key to identify the required operation, and pointer and size parameters to identify data to be passed:
+To allow this, we have an extensible system to request Meta operations on a stream. The \texttt{fz\_stream\_meta} function allows such calls to be made, with a reason code to identify the required operation, and pointer and size parameters to identify data to be passed:
 
 \begin{lstlisting}
 /*
@@ -3802,10 +3801,8 @@ This uses a friendly macro that allocates a structure of the required size, init
 fz_document_writer *fz_new_document_writer_of_size(fz_context *ctx, size_t size, fz_document_writer_begin_page_fn *begin_page,
 	fz_document_writer_end_page_fn *end_page, fz_document_writer_close_writer_fn *close, fz_document_writer_drop_writer_fn *drop);
 
-#define fz_new_derived_document_writer(CTX,TYPE,BEGIN,END,CLOSE,DROP) \
-	((TYPE *)Memento_label(fz_new_document_writer_of_size(CTX,\
-													sizeof(TYPE),BEGIN,END,\
-													CLOSE,DROP),#TYPE))
+#define fz_new_derived_document_writer(CTX,TYPE,BEGIN_PAGE,END_PAGE,CLOSE,DROP) \
+	((TYPE *)Memento_label(fz_new_document_writer_of_size(CTX,sizeof(TYPE),BEGIN_PAGE,END_PAGE,CLOSE,DROP),#TYPE))
 \end{lstlisting}
 
 The actual work for the document writer is done in the functions that are passed to \texttt{fz\_new\_derived\_document\_writer}. In the example above these were \texttt{foo\_begin\_page}, \texttt{foo\_end\_page}, \texttt{foo\_close}, and \texttt{foo\_drop}. These have the following 4 types respectively. 
@@ -3895,7 +3892,7 @@ With these mechanisms in place, a caller can repeatedly try to render each page 
 
 Once a page has been loaded, if its contents are to be `run' as normal (using e.g. \texttt{fz\_run\_page}) any error (such as failing to read a font, or an image, or even a content stream belonging to the page) will result in a rendering that aborts with a \texttt{FZ\_ERROR\_TRYLATER} error. The caller can catch this and display a placeholder instead.
 
-If each pages data was entirely self-contained and sent in sequence this would perhaps be acceptable, with each page appearing one after the other. Unfortunately, the linearization procedure as laid down by Adobe does not do this: objects shared between multiple pages (other than the first) are not sent with the pages themselves, but rather after all the pages have been sent.
+If each pages data was entirely self-contained and sent in sequence this would perhaps be acceptable, with each page appearing one after the other. Unfortunately, the linearization procedure as laid down by Adobe does NOT do this: objects shared between multiple pages (other than the first) are not sent with the pages themselves, but rather AFTER all the pages have been sent.
 
 This means that a document that has a title page, then contents that share a font used on pages 2 onwards, will not be able to correctly display page 2 until after the font has arrived in the file, which will not be until all the page data has been sent.
 
@@ -4250,7 +4247,7 @@ fz_pixmap *fz_get_pixmap_from_image(fz_context *ctx, fz_image *image, const fz_i
 
 Frequently this will involve decoding the image from its source data, so should be considered a potentially expensive call, both in terms of CPU time, and memory usage.
 
-To minimise the impact of such decodes, \texttt{fz\_image}s make use of the Store (see \rjwref{MemoryManagement}) to cache decoded versions in.  This means that (subject to enough memory being available) repeated calls to get a \texttt{fz\_pixmap} from the same \texttt{fz\_image} (with the same parameters) will return the same \texttt{fz\_pixmap} each time, with no further decode being required.  
+To minimise the impact of such decodes, \texttt{fz\_image}s make use of the Store (see \rjwref{MemoryManagement}) to cache decoded versions in.  This means that (subject to enough memory being available) repeated calls to get a \texttt{fz\_pixmap} from the same \texttt{fz\_image} (with the same parameters) will return the same \texttt{fz\_pixmap} each time, with no further decode being required.
 
 The usual reference counting behaviour applies to \texttt{fz\_image}s, with \texttt{fz\_keep\_image} and \texttt{fz\_drop\_image} claiming and releasing references respectively.
 
@@ -4258,7 +4255,7 @@ Depending on the size at which a \texttt{fz\_image} is to be used, it may not be
 
 To facilitate this, \texttt{fz\_image}s will subsample images as appropriate. Subsampling involves an image being decoded to a size an integer power of 2 smaller than their native size. For instance, if an image has a native size of 400x300, and is to be rendered to a final size of 40x30, \texttt{fz\_get\_pixmap\_from\_image} may subsample the returned image by up to 8 in each direction, resulting in a 50x37 image.
 
-Subsequent operations (such as smooth scaling and rendering) will proceed much faster due to fewer pixels being involved, and around one sixteenth of the memory will be required. 
+Subsequent operations (such as smooth scaling and rendering) will proceed much faster due to fewer pixels being involved, and around one sixteenth of the memory will be required.
 
 Many images have a resolution encoded within them. This may or may not be honoured in the way they are positioned on the page, and it will certainly not be honoured when zooming is taken into account, but for some operations it is useful to be able to request it.
 
@@ -4275,6 +4272,8 @@ void fz_image_resolution(fz_image *image, int *xres, int *yres);
 \end{lstlisting}
 
 If no resolution is specified within the image, sensible defaults are returned.
+
+A key ability of \texttt{fz\_image}s is that they are automatically cached in the \texttt{fz\_store} when decoded - repeated requests for pixmaps from the same image will (not necessarily) require the image to be decoded again and again.
 
 \section{Standard Image Types}
 \subsection{Compressed}
@@ -4569,8 +4568,7 @@ The key call here is the call to \texttt{fz\_new\_image}. This is a macro which 
 fz_image *fz_new_image_of_size(fz_context *ctx, int w, int h, int bpc, fz_colorspace *colorspace, int xres, int yres, int interpolate, int imagemask, float *decode, int *colorkey, fz_image *mask, int size, fz_image_get_pixmap_fn *get, fz_image_get_size_fn *get_size, fz_drop_image_fn *drop);
 
 #define fz_new_image(CTX,W,H,B,CS,X,Y,I,IM,D,C,M,T,G,S,Z) \
-		((T*)Memento_label(fz_new_image_of_size(CTX,W,H,B,CS,X,Y,I,IM,\
-											D,C,M,sizeof(T),G,S,Z),#T))
+((T*)Memento_label(fz_new_image_of_size(CTX,W,H,B,CS,X,Y,I,IM,D,C,M,sizeof(T),G,S,Z),#T))
 \end{lstlisting}
 
 The macro takes identical parameters to the function other than passing the structure type in place of the structure type saved, and performing a typecast to simplify the typical enclosing code. 
@@ -5060,7 +5058,7 @@ MuPDF contains a range of document handlers for different formats. Which of thes
 
 \subsection{PDF}
 
-Support for PDF (Portable Document Format) is provided by \texttt{pdf\_document\_handler}. All current versions at the time of writing (i.e up to and including PDF 2.0) are supported.
+Support for PDF (Portable Document Format) is provided by \texttt{pdf\_document\_handler}. All current versions at the time of writing (i.e  up to and including PDF 2.0) are supported.
 
 MuPDF contains functionality to allow deeper access to the contents and structure of a PDF file than is exposed through the standard \texttt{fz\_} prefixed functions, by using \texttt{pdf\_} prefixed functions.
 
@@ -5360,7 +5358,7 @@ An alternative common example would be where a document has been scanned, and th
 \section{Images}
 \label{DeviceImages}
 
-Images are handled by the device functions to plot images. See \rjwref{Image} for more information.
+Images are handled by the device functions to plot images. See \rjwref{Images} for more information.
 
 \begin{lstlisting}
 void fz_fill_image(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, float alpha, const fz_color_params *color_params);
@@ -6032,6 +6030,68 @@ Not all path consumers can cope with the full range of segment types that MuPDF 
 
 For example, if a path contains a quadratic segment and the \texttt{quadto} callback entry is NULL, MuPDF will automatically decompose it to a bezier segment and call the \texttt{curveto} entry instead.
 
+\chapter{Image Internals}
+\label{Images}
+
+The primary use of a \texttt{fz\_image} is to allow a rendered pixmap to be retrieved. This is done by calling:
+
+\begin{lstlisting}
+/*
+	fz_get_pixmap_from_image: Called to get a handle to a pixmap from
+	an image.
+
+	image: The image to retrieve a pixmap from.
+
+	subarea: The subarea of the image that we actually care about (or
+	NULL to indicate the whole image).
+
+	trans: Optional, unless subarea is given. If given, then on entry
+	this is the transform that will be applied to the complete image.
+	It should be updated on exit to the transform to apply to the given
+	subarea of the image. This is used to calculate the desired
+	width/height for subsampling.
+
+	w: If non-NULL, a pointer to an int to be updated on exit to the
+	width (in pixels) that the scaled output will cover.
+
+	h: If non-NULL, a pointer to an int to be updated on exit to the
+	height (in pixels) that the scaled output will cover.
+
+	Returns a non NULL pixmap pointer. May throw exceptions.
+*/
+fz_pixmap *fz_get_pixmap_from_image(fz_context *ctx, fz_image *image, const fz_irect *subarea, fz_matrix *trans, int *w, int *h);
+\end{lstlisting}
+
+Frequently this will involve decoding the image from its source data, so should be considered a potentially expensive call, both in terms of CPU time, and memory usage.
+
+To minimise the impact of such decodes, \texttt{fz\_image}s make use of the Store (see \rjwref{MemoryManagement}) to cache decoded versions in.  This means that (subject to enough memory being available) repeated calls to get a \texttt{fz\_pixmap} from the same \texttt{fz\_image} (with the same parameters) will return the same \texttt{fz\_pixmap} each time, with no further decode being required.
+
+The usual reference counting behaviour applies to \texttt{fz\_image}s, with \texttt{fz\_keep\_image} and \texttt{fz\_drop\_image} claiming and releasing references respectively.
+
+Depending on the size at which a \texttt{fz\_image} is to be used, it may not be worth decoding it at full resolution; instead, decoding it at a smaller size can save memory (and frequently time). In addition, subsequent rendering operations can often be faster due to having to handle fewer pixels for no quality loss in the final output.
+
+To facilitate this, \texttt{fz\_image}s will subsample images as appropriate. Subsampling involves an image being decoded to a size an integer power of 2 smaller than their native size. For instance, if an image has a native size of 400x300, and is to be rendered to a final size of 40x30, \texttt{fz\_get\_pixmap\_from\_image} may subsample the returned image by up to 8 in each direction, resulting in a 50x37 image.
+
+Subsequent operations (such as smooth scaling and rendering) will proceed much faster due to fewer pixels being involved, and around one sixteenth of the memory will be required. 
+
+Various different implementations of \texttt{fz\_image} exist within MuPDF.
+
+\section{Compressed Images}
+
+The \texttt{fz\_compressed\_image} structure is a specialisation of \texttt{fz\_image}, that holds the source data for an image in a \texttt{fz\_compressed\_buffer}. This is the usual form for images created from PDF and XPS files.
+
+The data for a compressed image can be retrieved by calling:
+
+\begin{lstlisting}
+fz_compressed_buffer *fz_compressed_image_buffer(fz_context *ctx, fz_image *image);
+\end{lstlisting}
+
+If the supplied \texttt{fz\_image} is not a \texttt{fz\_compressed\_image} then it will return \texttt{NULL}.
+
+\section{Pixmap Images}
+
+The \texttt{fz\_pixmap\_image} structure is a specialisation of \texttt{fz\_image}, that has a \texttt{fz\_pixmap} as its source data. This exists to allow \texttt{fz\_pixmaps} from other sources to be easily fed into the MuPDF rendering engine.
+
 \chapter{Text Internals}
 \label{Text}
 
@@ -6258,7 +6318,7 @@ With XPS the input can be either in the form of unicode or glyph ids, and direct
 
 Some formats, such as EPUB and HTML, send unicode text with even less positioning information, and rely on the interpreter to perform layout. Part of this process involves inferring directional information from the source text, and then using shaping mechanisms embedded within the font to do complex conversions to give the final positioned glyph sequences.
 
-In all such cases MuPDF will preserve the logical ordering of the unicode entries, at the cost of possibly drawing glyphs `out of order' onto the page.
+In all such cases MuPDF will preserve the logical ordering of the unicode entries, at the cost of drawing glyphs non-monotonically onto the page.
 
 Sequences of \texttt{fz\_text\_item}s that share the same characteristics are gathered together into \texttt{fz\_text\_span}s:
 
@@ -6345,7 +6405,7 @@ typedef struct fz_shade_s
 
 Currently, there is no defined API for creating a shading due to the public nature of the structure. Just call \texttt{fz\_malloc\_struct(ctx, fz\_shade)} and initialise the fields accordingly.
 
-We may look to add convenience functions in the future, as this is likely to be desirable for JNI (and other) bindings.
+We may look to add convenience functions in the future, as this is likely to be desirable for the JNI (and other) bindings.
 
 Shading objects are reference counted, with the implicit understanding that once more than one reference exists to a \texttt{fz\_shade}, it will no longer be modified.
 
@@ -6370,6 +6430,8 @@ fz_shade *fz_keep_shade(fz_context *ctx, fz_shade *shade);
 void fz_drop_shade(fz_context *ctx, fz_shade *shade);
 \end{lstlisting}
 
+
+We also provide a function to process a given shading, by calling:
 
 \section{Bounding}
 
@@ -6599,15 +6661,15 @@ To implement your own \texttt{fz\_output}, simply define a creation function of 
 fz_output *fz_new_output_foo(fz_context *ctx, <more parameters here>)
 {
 	fz_output *out = fz_new_output(ctx, <state>, foo_write, foo_close);
-	/* optionally set out->seek = foo_seek */
-	/* optionally set out->tell = foo_tell */
+	<optionally set out->seek = foo_seek>
+	<optionally set out->tell = foo_tell>
 	return out;
 }
 \end{lstlisting}
 
 This has parallels with the implementation of \texttt{fz\_stream}s, but is not quite identical.
 
-If `state' needs no destruction, then we can use NULL in place of \texttt{foo\_close}. Otherwise \texttt{foo\_close} should be a function of type:
+If <state> needs no destruction, then we can use NULL in place of \texttt{foo\_close}. Otherwise \texttt{foo\_close} should be a function of type:
 
 \begin{lstlisting}
 /*
@@ -6621,7 +6683,8 @@ If `state' needs no destruction, then we can use NULL in place of \texttt{foo\_c
 typedef void (fz_output_close_fn)(fz_context *ctx, void *state);
 \end{lstlisting}
 
-This can be as simple as doing \texttt{fz\_free(ctx, state)}, or (depending on the complexity of the state structure) can require more involved operations to clean up. Many \texttt{fz\_output} implementations rely on close being called to ensure the output is correctly flushed, and no data lost.
+This can be as simple as doing \texttt{fz\_free(ctx, state)}, or (depending on the complexity of the state structure) can require more involved operations to clean up.Many \texttt{fz\_output} implementations rely on close being called to ensure the output is correctly flushed, and no data lost.
+
 
 The most important function and the only non-optional one is \texttt{foo\_write}. This is a function of type:
 
@@ -7266,8 +7329,8 @@ The XPS document handler differs from the PDF document handler in that its sole 
 
 XPS files are zip format archives with a specific layout of files. As well as opening xps (and .oxps) files (archives) directly, MuPDF will also open unpacked files by pointing \texttt{fz\_open\_document} at the ``\texttt{rels/.rels}'' file in the unpacked directory tree.
 
-\chapter{EPUB/HTML Interpreter Details}
-\label{EPUBInterpreter}
+\chapter{EPub/HTML Interpreter Details}
+\label{EPubInterpreter}
 
 The EPUB and HTML document handlers are based upon the same layout code. With the exception of a few global configuration settings, their sole interfaces are those exposed through the \texttt{fz\_document} class.
 
@@ -7770,7 +7833,7 @@ Our libraries frequently contain bug fixes to the standard ones, and we attempt 
 \section{Javascript}
 \section{Linux/Windows viewer}
 \subsection{Non-GL version}
-\subsection{GL version}
+\subsection{GLFW version}
 
 
 
