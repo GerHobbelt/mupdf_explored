@@ -5474,6 +5474,33 @@ void fz_set_default_colorspaces(fz_context *ctx, fz_device *dev, fz_default_colo
 
 The device typically takes a reference to the \texttt{default\_cs} object and refers to it as required.
 
+\section{Layers}
+
+Some file formats (such as PDF) have the concept of `tagged content'. Graphical objects within the page stream can be tagged with information regarding how they correspond to each other on the page.
+
+PDF files are rarely authored directly, but are typically `distilled' from documents created in other programs (such as illustrator or similar packages). These other programs frequently have the concept of `layers', and this layer information is generally carried over into the created PDF file using this tagging mechanism.
+
+In fact, layers are such a ubiquitous source of tag information, that the PDF processing community (and some applications) frequently refers to such information as `layer' information, even though this is an abuse of the terminology. MuPDF follows this convention.
+
+Other interpreters may use layer information to explicitly encode genuine layers of course!
+
+There is no render-time special treatment of layered content, so content is simply composited blindly onto the same output image. Indeed, layers do not necessarily even nest nicely with other content, and can cross groups etc in unpredictable ways.
+
+As a document is interpreted, when a layer (or a tag) start or end is found, the device is signalled using the following calls:
+
+\begin{lstlisting}
+void (*begin_layer)(fz_context *, fz_device *, const char *layer_name);
+void (*end_layer)(fz_context *, fz_device *);
+\end{lstlisting}
+
+Not all content on a given layer may necessarily be sent at once - there may be several start/end pairs with the same tag.
+
+As an example, consider a newspaper laid out in a desktop processor. Multiple `stories' on the same page may be laid out each in multiple  columns of content. The PDF file produced from this may tag each column with an identifier for the story from which it came, and the stories may be interleaved with one another.
+
+By collating only the content tagged with a given identifier (layer name), individual stories may be able to be extracted from a PDF page.
+
+The use of tagged content will vary from application to application, following convention, but no hard and fast rules.
+
 \chapter{Path Internals}
 \label{Paths}
 
@@ -6669,7 +6696,7 @@ fz_output *fz_new_output_foo(fz_context *ctx, <more parameters here>)
 
 This has parallels with the implementation of \texttt{fz\_stream}s, but is not quite identical.
 
-If <state> needs no destruction, then we can use NULL in place of \texttt{foo\_close}. Otherwise \texttt{foo\_close} should be a function of type:
+If \texttt{state} needs no destruction, then we can use NULL in place of \texttt{foo\_close}. Otherwise \texttt{foo\_close} should be a function of type:
 
 \begin{lstlisting}
 /*
@@ -6744,8 +6771,9 @@ The first and most basic colorspace creation method is for creating a non-ICC ba
 fz_colorspace *fz_new_colorspace(
 							fz_context *ctx,
 							const char *name,
-							int n,
+							enum fz_colorspace_type type,
 							int flags,
+							int n,
 							fz_colorspace_convert_fn *to_ccs,
 							fz_colorspace_convert_fn *from_ccs,
 							fz_colorspace_base_fn *base,
@@ -6755,7 +6783,37 @@ fz_colorspace *fz_new_colorspace(
 							size_t size);
 \end{lstlisting}
 
-The \texttt{name} parameter is a pointer to a (short) ASCII string describing the colorspace, \texttt{n} is the number of colorants in the space, and \texttt{flags} is the value of any required flags for the colorspace combined with logical or.
+The \texttt{name} parameter is a pointer to a (short) ASCII string describing the colorspace, and \texttt{n} is the number of colorants in the space.
+
+The \texttt{type} of the colorspace should be chosen as one of the following types (which should be consistent with the value of \texttt{n} chosen):
+
+\begin{lstlisting}
+enum fz_colorspace_type
+{
+	FZ_COLORSPACE_NONE,
+	FZ_COLORSPACE_GRAY,
+	FZ_COLORSPACE_RGB,
+	FZ_COLORSPACE_BGR,
+	FZ_COLORSPACE_CMYK,
+	FZ_COLORSPACE_LAB,
+	FZ_COLORSPACE_INDEXED,
+	FZ_COLORSPACE_SEPARATION,
+};
+\end{lstlisting}
+
+The \texttt{flags} value for is the logical or of a selection of values from the following enum:
+
+\begin{lstlisting}
+enum
+{
+	FZ_COLORSPACE_IS_DEVICE = 1,
+	FZ_COLORSPACE_IS_ICC = 2,
+	FZ_COLORSPACE_IS_CAL = 4,
+	FZ_COLORSPACE_LAST_PUBLIC_FLAG = 4,
+};
+\end{lstlisting}
+
+MuPDF uses some extra bits internally, so unknown bits should be considered private.
 
 If the colorspace requires any private data (perhaps a palette for an indexed space), then an opaque pointer can be passed as \texttt{data}. A function to destroy this data when the colorspace reference count reaches zero should be passed as \texttt{destruct}.
 
@@ -6816,7 +6874,7 @@ fz_colorspace *fz_new_cal_colorspace(
 
 MuPDF can optionally make use of a color management engine to offer a fully color managed workflow.
 
-Its use of the engine is encapsulated within the \texttt{fz\_cmm\_engine} structure. Currently we provide an implementation of this structure using a modified version of LCMS2, but systems with other CMM engines in already can use those instead by reimplementing the functions therein.
+Its use of the engine is encapsulated within the \texttt{fz\_cmm\_engine} structure. Currently we provide an implementation of this structure using a modified version of LCMS2 (known as LCMS2MT), but systems with other CMM engines in already can use those instead by reimplementing the functions therein.
 
 By default, on start-up, MuPDF has no color management engine enabled. This keeps the library size down (and performance up!) for people who do not wish to use it.
 
@@ -7188,12 +7246,13 @@ If this was to be written directly into the new file, we'd still have an array o
 
 The solution to this requires us to walk the directed (possibly cyclic) graph of child objects within the object to be copied from one file to another, and to `deep copy' the contents.
 
+We refer to this process as `grafting' objects from one tree into another.
+
 \subsection{Grafting objects}
 
-This solution is implemented within MuPDF as:
+To move a single object to a new tree, use \texttt{pdf\_graft\_object}:
 
 \begin{lstlisting}
-A \texttt{pdf\_graft\_map} is a mechanism for allowing multiple objects from one file to be `grafted' into another, without unnecessary duplication of data.
 /*
 	pdf_graft_object: Return a deep copied object equivalent to the
 	supplied object, suitable for use within the given document.
