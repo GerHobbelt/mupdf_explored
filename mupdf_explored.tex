@@ -1197,7 +1197,7 @@ Each page in PDF can be authored with specific spot colors (inks) in mind. Detai
 /*
 	fz_page_separations: Get the separations details for a page.
 	This will be NULL, unless the format specifically supports
-	separations (such as gproof, or PDF files). May be NULL even
+	separations (such as PDF files). May be NULL even
 	so, if there are no separations on a page.
 
 	Returns a reference that must be dropped.
@@ -4087,7 +4087,7 @@ Support for the different document types supported by MuPDF is given by  a set o
 \begin{lstlisting}
 /*
 	Choose which document handlers to include.
-	By default all but GPRF are enabled. To avoid building unwanted
+	By default all are enabled. To avoid building unwanted
 	ones, define FZ_ENABLE_... to 0.
 */
 /* #define FZ_ENABLE_PDF 1 */
@@ -4098,7 +4098,6 @@ Support for the different document types supported by MuPDF is given by  a set o
 /* #define FZ_ENABLE_TIFF 1 */
 /* #define FZ_ENABLE_HTML 1 */
 /* #define FZ_ENABLE_EPUB 1 */
-/* #define FZ_ENABLE_GPRF 1 */
 \end{lstlisting}
 
 For instance to omit support for HTML, we would define \texttt{FZ\_ENABLE\_HTML} to be 0. Note that some document handlers share substantial parts of their code with other ones; for example the HTML and EPUB document ages share a large amount of code, so disabling just one of them will not make much difference to the overall code size.
@@ -5450,8 +5449,6 @@ flags = (flags | set) & ~clear;
 \end{lstlisting}
 
 That is to say, the bits given in \texttt{set} are set, and then the bits given in \texttt{clear} are cleared.
-
-The current only documented use of this is for the GProof device to request the Draw device to grid fit its tiled images.
 
 The reason for using Render Flags rather than Device Hints (see \rjwref{DeviceHints}) is that Render Flags can be carried forward though display lists.
 
