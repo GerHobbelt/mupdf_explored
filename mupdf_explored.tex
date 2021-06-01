@@ -78,7 +78,7 @@ As well as this library, the MuPDF distribution includes various tools built on 
 
 Often the first place that people will encounter MuPDF is as a Linux or Android desktop viewer, but these are merely simple examples of applications built using some of the features of the library.
 
-Finally, the MuPDF distribution includes bindings to reflect the MuPDF C API into other languages, such as Java and Javascript.
+Finally, the MuPDF distribution includes bindings to reflect the MuPDF C API into other languages, such as C++, Python, Java and Javascript.
 
 
 \section{License}
@@ -7866,42 +7866,171 @@ The interface is described in a single header, `\texttt{mupdf\slash helpers\slas
 
 MuPDF is designed to compile and run on almost any platform that supports a standard C runtime library. In general, we try to restrict our use of C features later than C89, and to rely only on Posix standard APIs.
 
-Our primary development platforms are Linux (various versions, 32 and 64bit using both Clang and GCC compilers) and Windows (32 and 64bit, using MSVC 2005).
+Our primary development platforms are Linux (various versions, 32 and 64bit using both Clang and GCC compilers) and Windows (32 and 64bit, using MSVC 2019).
 
-The choice of MSVC 2005 is deliberate; executables produced by this version run on every Windows version from XP (Service Pack 3) up to the latest (Windows 10 Creators Update, at the time of writing). More importantly, VS2005 solutions/projects can be imported into later versions, whereas projects from later versions cannot be used in earlier ones.
+The choice of MSVC 2019 was forced upon us by the Tesseract library that we use for OCR requiring a later version of C++ than is supported by earlier versions of Visual C. Executables can be produced by this version of Visual Studio that run on every Windows version from XP (Service Pack 3) up to the latest (Windows 10 20H2, at the time of writing). If Tesseract functionality is not required, then it should be fairly simple to fall back to earlier versions of VS (certainly back to VS2010, and even back to VS2005 at the cost of a different solution format).
 
-MSVC 2005 is not truly standards compliant, but it's close enough for our purposes. Neither is Windows Posix compliant, but in the cases where a Posix API is required and not available, we provide windows specific code, often by implementing an equivalent API using Windows platform calls.
+Windows is not Posix compliant, but in the cases where a Posix API is required and not available, we provide windows specific code, often by implementing an equivalent API using Windows platform calls.
 
-We do not currently actively use MacOS for developing MuPDF, though we have in the past. MuPDF compiles and runs fine on MacOS, and we intend to keep it so. There is no MacOS specific code in the MuPDF codebase; the MuPDF viewer for MacOS is just the standard linux X11 one. Similarly GSView 6.0 for Mac is a QT based application that uses the same code for Linux and Mac.
+We do not currently actively use MacOS for developing MuPDF, though we have in the past. MuPDF compiles and runs fine on MacOS, and we intend to keep it so. There is no MacOS specific code in the MuPDF codebase; the MuPDF viewer for MacOS is just the standard linux X11 one.
 
-MuPDF has language bindings for Android, iOS, Java and JavaScript.
+Aside from the native C API, MuPDF has language bindings for C++, Python, Java and JavaScript.
 
-\section{C library}
+\section{C API}
 
-On all platforms, MuPDF builds a C library that offers the standard C level API as defined within this book. By default we build a static library. Dynamic libraries can be built (and indeed are used on platforms such as Android), but we do not guarantee ABI compatibility between releases, so we do not provide this on all platforms by default.
+On all platforms, MuPDF builds a C library that offers the standard C level API as defined within this book. MuPDF is written in C and thus this C API is the basis for all the other language bindings described here. All new functionality will be exposed in the C API first. Other language bindings (as described in later sections) are built on top of the C API, sometimes by custom, hand-written code, sometimes by automated tools.
+
+By default we build a static library. Dynamic libraries can be built, but we do not guarantee ABI compatibility between releases, so we do not provide this on all platforms by default.
 
 The standard Unix makefile requires GNU Make, and detects the presence of the third party libraries within the \texttt{thirdparty} directory. If present, these are used in preference to any system libraries.
 
-Our libraries frequently contain bug fixes to the standard ones, and we attempt to pass such fixes upstream to the main package maintainers. Given that all our regression and quality control testing happens with the versions that we supply, we prefer people to use our versions, and will frequently ask for bug reports to be reproduced using such a build before investing too much time in trying to solve them. 
+The standard Visual Studio Solution requires Visual Studio 2019, and relies upon the presence of the third party libraries as above. No facility is offered as standard for using system libraries, but this should not be hard for an experienced user of Visual Studio to customize.
 
-\section{Android viewer}
-\section{Desktop Java}
-\subsection{Language bindings}
-\subsection{Viewer}
-\section{GSView}
+Our libraries frequently contain bug fixes to the standard ones, and we attempt to pass such fixes upstream to the main package maintainers. Given that all our regression and quality control testing happens with the versions that we supply, we prefer people to use our versions, and will frequently ask for bug reports to be reproduced using such a build before investing too much time in trying to solve them.
+
+\section{C++ API}
+
+We offer an object-oriented reflection of the standard C API into C++. While C++ programs can certainly call the C API directly, we offer the C++ bindings not just because they offer an environment that experienced C++ codes may find more familiar, but also because they can hide some of the complexities involved.
+
+This book does not go into detail on the C++ API, but in general, it is derived fairly simply (conceptually at least) from the C level one. To best illustrate the differences between the C and C++ APIs, let us consider an example. In C, we would load a page by calling:
+
+\begin{lstlisting}
+fz_page *page = fz_load_page(ctx, doc, page_num);
+\end{lstlisting}
+
+The C++ equivalent would be:
+
+\begin{lstlisting}
+mupdf::Page page = doc.load_page(page_num);
+\end{lstlisting}
+
+This simple example highlights some important differences.
+
+Firstly, where (almost) every C level call takes an \texttt{fz\_context} argument as the first parameter, this is handled for users automatically at the C++ level.
+
+Secondly, where C API functions operate on a particular object (in this example, a page), this will typically be passed as the second parameter (after the context). In the C++ translation, these objects are instances of classes, and functions become methods on these classes. That is to say that while the C API is not explicitly object-oriented (as the language does not natively support that concept) the generated C++ API is.
+
+Next, where the C version would need to be wrapped in a \texttt{fz\_try}/\texttt{fz\_catch} construct to handle any exceptions thrown, the C++ version only needs to handle standard C++ exceptions. This can reduce code as the C++ program may already be handling such exceptions.
+
+Finally, by passing objects by value, the C++ version handles reference counting automatically. Where programmers using the C version are required to track references manually using calls like \texttt{fz\_keep\_page} and \texttt{fz\_drop\_page}, C++ programmers never need to call these as this is taken care of behind the scenes.
+
+This C++ API is generated using a script that uses the Clang/llvm parser to analyse the C API so it is largely automatic. Often, changes/additions to the C API will convert seamlessly to C++ with no additional changes. For more complex cases, some tweaking of the scripts may be required. This automatic conversion happens based upon the API exposed in the public C headers; by default any new functions or types defined there will be reflected into the C++.
+
+A few other conveniences arise with the C++ wrappers. Where appropriate generated classes have support for iteration - for instance, the contents of an \texttt{StextPage} can be navigated using familiar C++ operations:
+
+\begin{lstlisting}
+void show_stext(mupdf::StextPage &page)
+{
+    for (mupdf::StextPage::iterator it_page: page)
+    {
+        mupdf::StextBlock block = *it_page;
+        for (mupdf::StextBlock::iterator it_block: block)
+        {
+            mupdf::StextLine line = *it_block;
+            for (mupdf::StextLine::iterator it_line: line)
+            {
+                mupdf::StextChar c = *it_line;
+                fz_stext_char *c = stextchar.m_internal;
+                std::cout << "StextChar("
+                        << "c=" << c->c
+                        << " color=" << c->color
+                        << " origin=" << c->origin
+                        << " quad=" << c->quad
+                        << " size=" << c->size
+                        << " font_name=" << c->font->name
+                        << "\n";
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+This example also serves to illustrate another convenience; simple classes (`POD' classes in C++ parlance) are given a \texttt{to\_string} method and an \texttt{<<} operator that converts them to a printable form. This enables structures to quickly be printed as seen with the \texttt{origin} and \texttt{quad} fields above.
+
+\section{Python}
+
+There are 2 sets of Python bindings for MuPDF.
+
+The first set is an independent open source project called PyMuPDF (\url{https://pypi.org/project/PyMuPDF/}). This was developed independently of MuPDF, but support and commercial licensing options are now available through Artifex if required. This is a mature set of code with some helpful extensions to MuPDF itself over and above a raw reflection of the C API. We will say no more about this set of bindings here.
+
+The second set of bindings are newer, and developed directly by the MuPDF developers themselves. They consist of a reflection of the C API (actually, a reflection of the C++ API, which is itself a reflection of the C API) into Python.
+
+For the technically inclined, these bindings are generated programmatically from the C++ API using SWIG (\url{http://swig.org}). The C++ \texttt{mupdf} namespace is reflected into a Python module called \texttt{mupdf}.
+
+Thus, any changes to the C API that survive the conversion into the C++ API should make it into the Python API automatically.
+
+As a demonstration both of the power of the Python bindings and a test of them (and indirectly the C++ ones on which they are based) we have converted the \texttt{draw} subtool from \texttt{mutool} to python as \texttt{scripts/mutool\_draw.py}.
+
+\section{Java}
+
+Like the C++ and Python bindings, the Java bindings are an object-oriented reflection of the C API.
+
+In contrast to the C++ and Python bindings, the Java bindings offered in MuPDF are not generated automatically, and use hand-written code. This means that additions and modifications to the C level API will require corresponding additions and modifications to the Java code.
+
+The Java class definitions can be seen in:
+
+\begin{lstlisting}
+platform/java/src/com/artifex/mupdf/fitz
+\end{lstlisting}
+
+These lean heavily on 'native' methods. The implementations for these methods are found in \texttt{platform/java/mupdf\_native.c}, and use the JNI interface to marry up native functions and data with their Java equivalents.
+
+This Java code is designed to work both on desktop Java, and on Android devices. When built for Android devices, it offers additional classes to give easy access to Android fonts and images, and for rendering into Android bitmaps.
+
 \section{Javascript}
-\section{Linux/Windows viewer}
-\subsection{Non-GL version}
-\subsection{GLFW version}
 
+PDF files can contain Javascript fragments to perform a variety of tasks including validation of form input data. To accommodate this, MuPDF has its own Javascript engine, `mujs'.
 
+The \texttt{run} subtool of \texttt{mutool} can be used to execute Javascript using this engine. While running such scripts, the engine provides a Javascript reflection of the C API (actually, more correctly a reflection of the object-oriented version of the API as found in C++).
 
+This enables the scripting of very powerful tasks, including opening, manipulating, rendering and resaving files. Some examples of such scripts can be found in \texttt{docs/examples}.
 
 \appendix
 
 \chapter{How to contribute to MuPDF}
 
-CLA. Style. Philosophy.
+MuPDF is open source; as such it's very easy for anyone to get a copy of the source and modify it. In order to contribute any such changes or fixes back to the main version, Artifex asks for a Copyright Assignment. In order to understand why this is required, we need to first understand the licenses under which MuPDF is made available.
+
+\section{Licensing}
+
+MuPDF is released under 2 licenses. To use MuPDF you have to pick a license and obey all its terms. If you cannot abide by all the terms of a license, then you cannot use that license. If you can't agree with at least one license, you can't use MuPDF at all.
+
+\subsection{GNU AGPL}
+
+Firstly, MuPDF is released under the GNU AGPL; with this you are free to copy the code, modify it, and incorporate it into your own works as you see fit. While these works are purely for you alone there are no limits on what you can do, but once you share your modifications with anyone else (either in source or binary forms, or by making them available as part of a `service'), this counts as distribution. In order to distribute anything derived from MuPDF you must obey the terms of the GNU AGPL. 
+
+The `viral' nature of the GNU AGPL is such that this means your entire application that uses MuPDF must be distributed under the GNU AGPL, not just the portion that interfaces with MuPDF. One of the most obvious consequences of this is that you have to make all the source code for your application and all the libraries that it relies on available. For many developers, they simply cannot agree to this, which rules out the GNU AGPL for them.
+
+\subsection{Artifex Commercial License}
+
+For such cases, there is a second licensing option, a commercial license from Artifex. This is not a free license, but it does free you from the constraints of the GNU AGPL. In particular your application can remain closed source.
+
+The money raised from such commercial licenses has funded the development of MuPDF since its inception. Without commercial licenses, MuPDF would not be as well developed and capable as it is today.
+
+\section{Copyright Assignment}
+
+The reason Artifex is able to license MuPDF in this way is because it owns all the copyright in the MuPDF code. The vast majority of development work on MuPDF has been directly paid for by Artifex. The rest of it is in smaller patches and fixes that have had their Copyright assigned to Artifex.
+
+If Artifex were to take on a patch without owning the Copyright, it would no longer be able to license MuPDF commercially, which would mean that it could no longer fund development.
+
+Accordingly, in order for any (non-trivial) patch to be accepted into the main MuPDF source tree, Artifex asks the author of that patch to sign a Copyright Assignment letter giving over their copyright to Artifex.
+
+Artifex runs a Bug Bounty programme, whereby interested developers who tackle nominated problems can earn cash payments for their fixes.
+
+
+\section{Coding Style}
+
+Any submissions to MuPDF should try to match the existing coding style. While following the coding style does not guarantee inclusion, not following it will severely harm the chances of getting a patch accepted.
+
+Details of the coding style can be found in \texttt{docs/coding-style.html}.
+
+While it's true that developers can always tweak a patch before they accept it (to make it follow whitespace, layout, naming, and other conventions), submitting a patch that requires such interventions is stacking the deck against it.
+
+MuPDF is at pains to work everywhere. Submitting a patch that only works in specific circumstances (such as only working on Linux) is a sure-fire way to get rejected.
+
+Similarly, pulling in new dependencies (be it new libraries or new functions that aren't supported in all platforms) will make a patch unlikely to succeed.
+
+MuPDF has a very consistent layout and whitespace style; patches that don't follow the pattern will need to be refactored before they can be accepted.
 
 \backmatter
 \printindex
