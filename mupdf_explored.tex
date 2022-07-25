@@ -47,7 +47,7 @@
 
 \chapter{Preface}
 
-This is the beginnings of a book on MuPDF. It is far from complete, but offers useful information as far as it goes. We offer it with the latest release of MuPDF (currently 1.13) in the hopes it will be useful.
+This is the beginnings of a book on MuPDF. It is not yet complete, but offers useful information as far as it goes. We offer it with the latest release of MuPDF (see \url{mupdf.com/downloads}) in the hopes it will be useful. It documents the API and design of MuPDF as of version 1.19.
 
 Any feedback, corrections or suggestions are welcome. Please visit \url{bugs.ghostscript.com} and open a bug with ``MuPDF'' as the product, and ``Documentation'' as the component.
 
@@ -78,7 +78,7 @@ As well as this library, the MuPDF distribution includes various tools built on 
 
 Often the first place that people will encounter MuPDF is as a Linux or Android desktop viewer, but these are merely simple examples of applications built using some of the features of the library.
 
-Finally, the MuPDF distribution includes bindings to reflect the MuPDF C API into other languages, such as Java and Javascript.
+Finally, the MuPDF distribution includes bindings to reflect the MuPDF C API into other languages, such as C++, Python, Java and Javascript.
 
 
 \section{License}
@@ -1109,79 +1109,17 @@ Once the last reference to a page is dropped, the resources it consumes are all 
 
 
 \section{Anatomy of a Page}
+\label{PageAnatomy}
 
 In MuPDF terminology (largely borrowed from PDF) Pages consist of Page Contents, Annotations, and Links.
 
 Page Contents (or just Contents) are typically the ordinary printed matter that you would get on a page; the text, illustrations, any headers or footers, and maybe some printers marks.
 
-Annotations are normally extra information that is overlaid on the top of these page contents. Examples include freehand scribbles on the page, highlights\slash underlines\slash strikeouts overlaid on the text, sticky notes etc. Annotations are typically added to a document by people reading the document after it has been published rather than by the original author.
+Annotations are normally extra information that is overlaid on the top of these page contents. Examples include freehand scribbles on the page, highlights\slash underlines\slash strikeouts overlaid on the text, sticky notes etc. Annotations can be included when the document is originally authored, but, frequently, are added later by people as they read the document.
 
-Annotations can be enumerated from the page one at a time, by first calling \texttt{fz\_first\_annot}, and then \texttt{fz\_next\_annot}:
+Annotations also serve as the key components that allow interactivity in PDF documents.
 
-\begin{lstlisting}
-/*
-	fz_first_annot: Return a pointer to the first annotation on a page.
-
-	Does not throw exceptions.
-*/
-fz_annot *fz_first_annot(fz_context *ctx, fz_page *page);
-
-/*
-	fz_next_annot: Return a pointer to the next annotation on a page.
-
-	Does not throw exceptions.
-*/
-fz_annot *fz_next_annot(fz_context *ctx, fz_annot *annot);
-\end{lstlisting}
-
-Annotations are reference counted and can be kept and dropped as usual.
-
-\begin{lstlisting}
-/*
-	fz_keep_annot: Take a new reference to an annotation.
-*/
-fz_annot *fz_keep_annot(fz_context *ctx, fz_annot *annot);
-
-/*
-	fz_drop_annot: Drop a reference to an annotation. If the
-	reference count reaches zero, annot will be destroyed.
-*/
-void fz_drop_annot(fz_context *ctx, fz_annot *annot);
-\end{lstlisting}
-
-
-They can also be bounded, by passing a rectangle to \texttt{fz\_bound\_annot}:
-
-\begin{lstlisting}
-/*
-	fz_bound_annot: Return the bounding rectangle of the annotation.
-
-	Does not throw exceptions.
-*/
-fz_rect *fz_bound_annot(fz_context *ctx, fz_annot *annot, fz_rect *rect);
-\end{lstlisting}
-
-On return, the rectangle is populated with the bounding box of the annotation.
-
-Links describe `active' regions on the page; if the user `clicks' within such a region typically the viewer should respond. Some links move to other places in the document, others launch external clients such as mail or web sites.
-
-The links on a page can be read by calling \texttt{fz\_load\_links}:
-
-\begin{lstlisting}
-/*
-	fz_load_links: Load the list of links for a page.
-
-	Returns a linked list of all the links on the page, each with
-	its clickable region and link destination. Each link is
-	reference counted so drop and free the list of links by
-	calling fz_drop_link on the pointer return from fz_load_links.
-
-	page: Page obtained from fz_load_page.
-*/
-fz_link *fz_load_links(fz_context *ctx, fz_page *page);
-\end{lstlisting}
-
-This returns a linked list of \texttt{fz\_link} structures. \texttt{link->next} gives the next one in the chain.
+More details can be found in \rjwref{Annotations}.
 
 \section{Color Considerations}
 
@@ -1230,7 +1168,7 @@ To render a page, you first need to know how big it is. This can be discovered b
 fz_rect *fz_bound_page(fz_context *ctx, fz_page *page, fz_rect *rect);
 \end{lstlisting}
 
-MuPDF operates on page contents (and annotations) by processing them to a Device. There are various different devices in MuPDF (and you can implement your own). See \rjwref{Device} for more information. For now, just consider devices to be things that are called with each of the graphical items on the page in turn.
+MuPDF operates on page contents (and annotations/widgets) by processing them to a Device. There are various different devices in MuPDF (and you can implement your own). See \rjwref{Device} for more information. For now, just consider devices to be things that are called with each of the graphical items on the page in turn.
 
 The simplest way to process a page is to call \texttt{fz\_run\_page}:
 
@@ -1257,9 +1195,9 @@ The simplest way to process a page is to call \texttt{fz\_run\_page}:
 void fz_run_page(fz_context *ctx, fz_page *page, fz_device *dev, const fz_matrix *transform, fz_cookie *cookie);
 \end{lstlisting}
 
-This will cause each graphical object from the page contents and annotations in turn to be transformed, and fed to the device.
+This will cause each graphical object from the page contents and annotations to be transformed, and fed to the device.
 
-For finer control, you may wish to run the page contents, and the annotations separately:
+For finer control, you may wish to run the page contents and the annotations for a page separately:
 
 \begin{lstlisting}
 /*
@@ -1285,32 +1223,14 @@ For finer control, you may wish to run the page contents, and the annotations se
 void fz_run_page_contents(fz_context *ctx, fz_page *page, fz_device *dev, const fz_matrix *transform, fz_cookie *cookie);
 
 /*
-	fz_run_annot: Run an annotation through a device.
-
-	page: Page obtained from fz_load_page.
-
-	annot: an annotation.
-
-	dev: Device obtained from fz_new_*_device.
-
-	transform: Transform to apply to page. May include for example
-	scaling and rotation, see fz_scale, fz_rotate and fz_concat.
-	Set to fz_identity if no transformation is desired.
-
-	cookie: Communication mechanism between caller and library
-	rendering the page. Intended for multi-threaded applications,
-	while single-threaded applications set cookie to NULL. The
-	caller may abort an ongoing rendering of a page. Cookie also
-	communicates progress information back to the caller. The
-	fields inside cookie are continually updated while the page is
-	rendering.
+	fz_run_page_annots: Run the annotations on a page through a device.
 */
-void fz_run_annot(fz_context *ctx, fz_annot *annot, fz_device *dev, const fz_matrix *transform, fz_cookie *cookie);
+void fz_run_page_annots(fz_context *ctx, fz_page *page, fz_device *dev, const fz_matrix *transform, fz_cookie *cookie);
 \end{lstlisting}
 
 These functions enable viewer applications to generate separate display lists for page contents and annotations. This can be useful if annotations are frequently changed, as it allows regeneration/redraw to happen on a per-annotation rather than per-page level.
 
-All three of these functions (\texttt{fz\_run\_page}, \texttt{fz\_run\_page\_contents}, \texttt{fz\_run\_annot}) take a \texttt{fz\_cookie} pointer. The Cookie is a lightweight way of controlling the processing of the page. For more details, see \rjwref{Cookie}. For most simple cases this can be \texttt{NULL}.
+All of these functions (\texttt{fz\_run\_page}, \texttt{fz\_run\_page\_contents}, \texttt{fz\_run\_page\_annots}) take a \texttt{fz\_cookie} pointer. The Cookie is a lightweight way of controlling the processing of the page. For more details, see \rjwref{Cookie}. For most simple cases this can be \texttt{NULL}.
 
 \section{Presentations}
 \label{Presentations}
@@ -3799,8 +3719,12 @@ This uses a friendly macro that allocates a structure of the required size, init
 fz_document_writer *fz_new_document_writer_of_size(fz_context *ctx, size_t size, fz_document_writer_begin_page_fn *begin_page,
 	fz_document_writer_end_page_fn *end_page, fz_document_writer_close_writer_fn *close, fz_document_writer_drop_writer_fn *drop);
 
-#define fz_new_derived_document_writer(CTX,TYPE,BEGIN_PAGE,END_PAGE,CLOSE,DROP) \
-	((TYPE *)Memento_label(fz_new_document_writer_of_size(CTX,sizeof(TYPE),BEGIN_PAGE,END_PAGE,CLOSE,DROP),#TYPE))
+#define fz_new_derived_document_writer(CTX,TYPE,
+                                           BEGIN_PAGE,END_PAGE,CLOSE,DROP)\
+	((TYPE *)Memento_label(\
+	              fz_new_document_writer_of_size(CTX,sizeof(TYPE),\
+													BEGIN_PAGE,END_PAGE,\
+													CLOSE,DROP),#TYPE))
 \end{lstlisting}
 
 The actual work for the document writer is done in the functions that are passed to \texttt{fz\_new\_derived\_document\_writer}. In the example above these were \texttt{foo\_begin\_page}, \texttt{foo\_end\_page}, \texttt{foo\_close}, and \texttt{foo\_drop}. These have the following 4 types respectively.
@@ -4187,6 +4111,386 @@ Accordingly, to drop support for rendering emoji characters, you'd define \textt
 
 The largest set of fonts are those for the wide range of worldwide scripts given by the Google Noto fonts. These can be omitted by defining \texttt{TOFU}.
 
+
+\chapter{Annotations, Links and Interaction}
+\label{Annotations}
+
+\section{Overview}
+
+Different document formats offer different levels of interactivity. Some formats (such as images) are simple static content that (other than being panned and zoomed) offers no interaction at all. Others (such as ebooks) offer interaction in that they might have internal links to allow fast navigation from a "Contents" page to the chapters concerned. PDF takes interaction to a completely different level by offering a rich mechanism for annotations, including a complete JavaScript engine to allow arbitrarily complex calculations and interactions to be built in to each document.
+
+Accordingly, the \texttt{fitz} APIs allow access to both inter- and intra-document links using an \texttt{fz\_link} abstraction. However the links are defined in the underlying document they will be exposed through this same abstraction.
+
+As described earlier in \ref{PageAnatomy}, annotations are conceptually extra information overlaid on the basic page content.
+
+The simplest examples are of content to be overlaid on the document at specific locations. For instance, an Ink annotation allows a user defined path to be displayed - typically used for freehand signatures, or scrawled freehand drawings. Stamp annotations allow preset text strings to be displayed in the form of a 'rubber stamp' (such as 'Approved').
+
+More complex examples include the 'sticky note', where an icon is displayed on the document that when clicked reveals some textual notes.
+
+PDF Forms are implemented with each field being an annotation, capable of having their values edited by the user, including being processed by embedded JavaScript to format and validate responses.
+
+Finally, buttons can trigger JavaScript that modifies other annotations programmatically, enabling arbitrarily complex interactions to be constructed. A simple document used to demonstrate this implements a pocket calculator that performs a range of arithmetic functions. Another might be a loan calculator, where the last page of a document describing the loans available from a bank would let people choose the loan amount, repayment frequency, loan term etc, and see how their payments would change.
+
+\section{Fitz-level Links}
+
+Links describe `active' regions on the page; if the user `clicks' within such a region typically the viewer should respond. Some links move to other places in the document, others launch external clients such as mail or web sites.
+
+The links on a page can be read by calling \texttt{fz\_load\_links}:
+
+\begin{lstlisting}
+/*
+	fz_load_links: Load the list of links for a page.
+
+	Returns a linked list of all the links on the page, each with
+	its clickable region and link destination. Each link is
+	reference counted so drop and free the list of links by
+	calling fz_drop_link on the pointer return from fz_load_links.
+
+	page: Page obtained from fz_load_page.
+*/
+fz_link *fz_load_links(fz_context *ctx, fz_page *page);
+\end{lstlisting}
+
+This returns a linked list of \texttt{fz\_link} structures. \texttt{link->next} gives the next one in the chain.
+
+Links are reference counted, and \texttt{fz\_load\_links} returns ownership of a reference to the caller. The caller must eventually \texttt{fz\_drop\_link} it to avoid a leak.
+
+\begin{lstlisting}
+/**
+	Increment the reference count for a link. The same pointer is
+	returned.
+
+	Never throws exceptions.
+*/
+fz_link *fz_keep_link(fz_context *ctx, fz_link *link);
+
+/**
+	Decrement the reference count for a link. When the reference
+	count reaches zero, the link is destroyed.
+
+	When a link is freed, the reference for any linked link (next)
+	is dropped too, thus an entire linked list of fz_link's can be
+	freed by just dropping the head.
+*/
+void fz_drop_link(fz_context *ctx, fz_link *link);
+\end{lstlisting}
+
+Currently the API requires users to access the bounds for the link to be accessed within the \texttt{fz\_link} structure as \texttt{rect} (in untransformed document coordinates), and the destination of the link as \texttt{uri}. This may change with the addition of an API for accessing these fields in future.
+
+A convenience function is given to determine if a link is an external one.
+
+\begin{lstlisting}
+/**
+	Query whether a link is external to a document (determined by
+	uri containing a ':', intended to match with '://' which
+	separates the scheme from the scheme specific parts in URIs).
+*/
+int fz_is_external_link(fz_context *ctx, const char *uri);
+\end{lstlisting}
+
+\section{Fitz-level Annotations}
+
+In the MuPDF universe, the rendered version of a page contains the page contents, overlaid by content from the annotations.
+
+Accordingly, as seen in \ref{RenderingPages}, the \texttt{fitz} layer allows page contents and annotations to be drawn separately using \texttt{fz\_run\_page\_contents} and \texttt{fz\_run\_page\_annots}.
+
+This is currently the sole access provided to annotations using the \texttt{fitz} layer; to exert finer control, a caller will need to use the PDF level API.
+
+\section{PDF-level Annotations and Widgets}
+
+\subsection{How to operate at the PDF level}
+
+In order to operate on a document at the PDF level, we require a \texttt{pdf\_document} pointer. Such a pointer can be obtained from a the \texttt{fz\_document} pointer, by using the \texttt{pdf\_specifics} call.
+
+\begin{lstlisting}
+pdf_document *pdf_specifics(fz_context *ctx, fz_document *doc};
+\end{lstlisting}
+
+If \texttt{pdf\_specifics} is called on a non-PDF file, it will return NULL, so callers can safely check that a given document can be operated on.
+
+Note that \texttt{pdf\_specifics} does not return a new reference to the document; if one is required, callers should \texttt{pdf\_keep\_document} as usual and \texttt{pdf\_drop\_document} it later.
+
+\subsection{PDF Annotations}
+
+Each annotation is attached to a specific area of a page. The annotations on a page are found by enumerating them one at a time, by first calling \texttt{pdf\_first\_annot}, and then \texttt{pdf\_next\_annot}:
+
+\begin{lstlisting}
+/*
+	pdf_first_annot: Return a pointer to the first annotation on a page.
+
+	Does not throw exceptions.
+*/
+pdf_annot *pdf_first_annot(fz_context *ctx, fz_page *page);
+
+/*
+	fz_next_annot: Return a pointer to the next annotation on a page.
+
+	Does not throw exceptions.
+*/
+pdf_annot *pdf_next_annot(fz_context *ctx, pdf_annot *annot);
+\end{lstlisting}
+
+When either of these returns \texttt{NULL}, you have reached the end of the list.
+
+Annotations are reference counted and can be kept and dropped as usual. It's important to realise that the references returned by \texttt{pdf\_first\_annot}
+and \texttt{pdf\_next\_annot} are 'borrowed'. That is to say, the ownership of the reference does not pass back to the caller, and therefore does not need to be dropped. If the caller wants to keep hold of such a reference for any period of time, it should 'keep' the reference and then 'drop' it later when it has finished with it.
+
+\begin{lstlisting}
+/*
+	pdf_keep_annot: Take a new reference to an annotation.
+*/
+pdf_annot *pdf_keep_annot(fz_context *ctx, pdf_annot *annot);
+
+/*
+	pdf_drop_annot: Drop a reference to an annotation. If the
+	reference count reaches zero, annot will be destroyed.
+*/
+void pdf_drop_annot(fz_context *ctx, pdf_annot *annot);
+\end{lstlisting}
+
+They can also be bounded, by passing a rectangle to \texttt{pdf\_bound\_annot}:
+
+\begin{lstlisting}
+/*
+	pdf_bound_annot: Return the bounding rectangle of the annotation.
+
+	Does not throw exceptions.
+*/
+fz_rect *pdf_bound_annot(fz_context *ctx, pdf_annot *annot, fz_rect *rect);
+\end{lstlisting}
+
+On return, the rectangle is populated with the bounding box of the annotation.
+
+Every annotation has a type, which can be retrieved using:
+
+\begin{lstlisting}
+/*
+	Return the type of an annotation.
+*/
+enum pdf_annot_type pdf_annot_type(fz_context *ctx, pdf_annot *annot);
+\end{lstlisting}
+
+If the type returned is \texttt{PDF\_ANNOT\_WIDGET}, then it is a particular subtype of annotation, known as a widget. Widgets allow a wider range of operations to be performed on them, described in \ref{Widgets}.
+
+\subsection{Annotation Values vs Appearances}
+
+In general Annotations have both a 'value' and an 'appearance'. These are related, but different.
+
+As an example, consider a text annotation. The value of the annotation will be the text contained in the annotation, coupled with some styling parameters (perhaps the color to be used for the text). The appearance will be the actual appearance of that text once laid out with those styles and displayed on the page.
+
+Similarly, an Ink (or 'freehand') annotation might have a value that is the list of points that should be stroked, together with the color of the path, and the line caps to use. The appearance will be the actual stream of PDF operators that are used to draw that path with those styles.
+
+In other cases, multiple appearances may be given to an annotation, and the one used will be selected by the value. In such cases, there are no styles do not apply, as the appearances are not recreated to take account of them. For instance, a CheckBox widget will have 'On' and 'Off' states, and the PDF viewer will select between them according to the value.
+
+Very often PDF generators will create an annotation with both value and appearance set within the file. Naive PDF viewers can then just ignore the value and display the appearance. Sometimes, however, PDF files are generated with just the value being set. Accordingly, PDF viewers must 'synthesise' an appearance from the value in order to have something to display.
+
+Similarly, if an annotation's value is edited, unless we are in the position of just choosing between multiple existing appearances, we'll need to 'resynthesise' the appearance. For example, changing the value of a CheckBox widget will not require resynthesising an appearance, but changing the value of a text field will.
+
+To add to the complexity, changing the value of one field can cause other fields to change too (consider setting a radio button that unsets the other buttons grouped with it). This can even cause changes across multiple pages! Accordingly a mechanism is needed for clients to ask MuPDF what annotations have changed since they were last rendered.
+
+\subsection{Updating annotations}
+
+Whenever a call is made to change the value of a field (or to pass an 'event' in, see \ref{Events}), the caller needs to check with the document as to which fields have been updated. Changing one value can potentially change many other field in the document, possibly on many pages. This can happen by an annotation being 'grouped' with others, or even by document level JavaScript 'recalculating' values anywhere in the document.
+
+The caller thus needs to check for every annotation on every open page whether it needs to be 'updated' or not.
+
+This can be done wholesale, by calling \texttt{pdf\_update\_page} for each open page. If this returns true, then the page needs to be redrawn.
+
+If the caller wishes to do finer-grained redraws, it can walk over the annotations on a page using \texttt{pdf\_first\_annot} and \texttt{pdf\_last\_annot}, calling \texttt{pdf\_update\_annot} as it goes. This call will return true for every annotation that requires redrawing (which can be done using \texttt{pdf\_run\_annot}). Care must be taken to ensure that redraws work properly though, as annotations can overlap, and not all of them may be flagged as having been changed.
+
+The updating of annotations on pages that are open (i.e. to which handles are held) but not visible can be deferred until the page is displayed again.
+
+\section{PDF Annotation operations}
+
+MuPDF provides an extensive API for manipulating annotations within a document. Most obviously, they can be created:
+
+\begin{lstlisting}
+/*
+	create a new annotation of the specified type on the
+	specified page. Populate it with sensible defaults per the type.
+
+	Returns a reference that the caller must drop when finished with it.
+*/
+pdf_annot *pdf_create_annot(fz_context *ctx, pdf_page *page, enum pdf_annot_type type);
+\end{lstlisting}
+
+and destroyed:
+
+\begin{lstlisting}
+/*
+	Delete an annotation from the page.
+
+	This unlinks the annotation from the page structure and drops
+	the pages reference to it. Any reference held by the caller
+	will not be dropped automatically, so this can safely be used
+	on a borrowed reference.
+*/
+void pdf_delete_annot(fz_context *ctx, pdf_page *page, pdf_annot *annot);
+\end{lstlisting}
+
+The exact operations available to work on an annotation depend upon its type, and can be found in \texttt{include/mupdf/pdf/annot.h}. Which operations can be called on which annotation depends largely upon its type, which can be found using:
+
+\begin{lstlisting}
+/*
+	Return the type of an annotation.
+*/
+enum pdf_annot_type pdf_annot_type(fz_context *ctx, pdf_annot *annot);
+\end{lstlisting}
+
+In general, callers can check for the existence of certain parameters using calls of the form \texttt{pdf\_annot\_has\_XXX}, fetch them using \texttt{pdf\_annot\_XXX}, and set them using \texttt{pdf\_annot\_set\_XXX}.
+
+\subsection{PDF Widgets}
+\label{Widgets}
+
+PDF encapsulates a whole range of interactivity into annotations of subtype Widget. These Widgets are used particularly for form elements and digital signatures. As such they have a richer set of operations that can be done on them.
+
+As well as the annotation operations from \texttt{include/mupdf/pdf/annot.h} there are more operations that can performed, as listed in \texttt{include/mupdf/pdf/form.h}.
+
+Widgets can be identified by an annotation having type \texttt{PDF\_ANNOT\_WIDGET}. The exact type of widget can then be established by calling:
+
+\begin{lstlisting}
+/*
+	Return the type of a widget.
+*/
+enum pdf_widget_type pdf_widget_type(fz_context *ctx, pdf_annot *annot);
+\end{lstlisting}
+
+\subsection{Events}
+\label{Events}
+
+PDF offers interactivity that goes far beyond that of simple static pages; by using JavaScript embedded in the document that triggers according to the inputs of the user viewing it, it can make documents appear very responsive.
+
+Accordingly, viewers need to tell MuPDF when certain things happen. These are termed 'Events'.
+
+First off, we have document level events:
+
+\begin{lstlisting}
+void pdf_document_event_will_close(fz_context *ctx, pdf_document *doc);
+void pdf_document_event_will_save(fz_context *ctx, pdf_document *doc);
+void pdf_document_event_did_save(fz_context *ctx, pdf_document *doc);
+void pdf_document_event_will_print(fz_context *ctx, pdf_document *doc);
+void pdf_document_event_did_print(fz_context *ctx, pdf_document *doc);
+\end{lstlisting}
+
+The viewer should call these at the appropriate times. These actions cannot 'succeed' or 'fail', but they can put up appropriate alert boxes via a registered event callback (see \ref{EventCallback}).
+
+There are events at the page level too:
+
+\begin{lstlisting}
+void pdf_page_event_open(fz_context *ctx, pdf_page *page);
+void pdf_page_event_close(fz_context *ctx, pdf_page *page);
+\end{lstlisting}
+
+These should be called when the page is opened and closed, respectively.
+
+There are events at the annotation level too. The first set are related to the page:
+
+\begin{lstlisting}
+void pdf_annot_event_page_open(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_page_close(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_page_visible(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_page_invisible(fz_context *ctx, pdf_annot *annot);
+\end{lstlisting}
+
+These should be called when the page containing the annotation is opened, close, becomes visible, and becomes invisible respectively.
+
+Next, there are a set of annotation level events to do with the users interaction with a document:
+
+\begin{lstlisting}
+void pdf_annot_event_enter(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_exit(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_down(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_up(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_focus(fz_context *ctx, pdf_annot *annot);
+void pdf_annot_event_blur(fz_context *ctx, pdf_annot *annot);
+\end{lstlisting}
+
+These are based upon the concept of a user interface with a pointing device (such as a traditional desktop interface equipped with a mouse). These should be called when the mouse enters and exits the annotation, when the mouse button goes down or up on the annotation, and when the annotation gains or loses focus.
+
+Finally, there are events to do with actively editing text fields. In order to provide inline editing, we have events that enable keystrokes to be validated and formatted as they are edited.
+
+As editing begins in a field, we should call a keystroke event as characters arrive:
+
+\begin{lstlisting}
+typedef struct
+{
+	const char *value;
+	const char *change;
+	int selStart, selEnd;
+	int willCommit;
+	char *newChange;
+	char *newValue;
+} pdf_keystroke_event;
+
+int pdf_field_event_keystroke(fz_context *ctx, pdf_document *doc, pdf_obj *field, pdf_keystroke_event *evt);
+\end{lstlisting}
+
+The handling here is somewhat involved, and is defined (poorly) by Adobe in their ``JavaScript for Acrobat API Reference" document.
+
+On each call, \texttt{value} contains the current value of the field, and \texttt{change} contains the propose new character(s) to be added. \texttt{selStart} and \texttt{selEnd} describe the region of \texttt{value} that is currently selected. In the case of no selection \texttt{selStart} and \texttt{selEnd} should both be set to the caret position within \texttt{value}. Where the selection is completely undefined \texttt{selStart} and \texttt{selEnd} should both be set to -1. It is believed that Adobe intends this to mean ``the whole of \texttt{change}".
+
+The proposal therefore is that we would like to insert \texttt{change} between \texttt{selStart} and \texttt{selEnd} within \texttt{value} to get a new value.
+
+Initially this call is made with \texttt{willCommit} set to 0, and the call made.
+
+The JavaScript (if there is any) will run, and the routine will return 0 or 1.
+
+If 0, then the proposed change is rejected, and the keystroke should be ignored.
+
+If 1, then the JavaScript has deemed that the change can go ahead, using the updated \texttt{selStart} and \texttt{selEnd}, and the updated values of \texttt{value} and \texttt{change} returned in \texttt{newValue} and \texttt{newChange}.
+
+The caller should form this updated value, and present it to the user in whatever form it is doing the editing. Future keystrokes go through the same process until the user indicates that editing is complete (perhaps by clicking an 'OK' button or pressing RETURN).
+
+At this point the proposed `final version' of the is presented to the event again, this time with \texttt{value} being the string, \texttt{change} being the empty string, \texttt{selStart} and \texttt{selEnd} both being -1, and \texttt{willCommit} being 1.
+
+The JavaScript will again assess the proposed string (with possibly more stringent tests), and will return 0 or 1.
+
+If it returns 0 then the string is not acceptable. If it returns 1, then the (possibly updated) version of the string in \texttt{newValue} should be used.
+
+\subsection{Event Callback}
+\label{EventCallback}
+
+As part of executing the JavaScript within a document, the JavaScript engine within MuPDF can need to call out to the environment for help. This is achieved by the user of MuPDF registering an `Event Callback'.
+
+Such a callback is registered using:
+
+\begin{lstlisting}
+void pdf_set_doc_event_callback(fz_context *ctx, pdf_document *doc, pdf_doc_event_cb *event_cb, pdf_free_doc_event_data_cb *free_event_data_cb, void *data);\end{lstlisting}
+
+The user of MuPDF should call this to provide a suitable \texttt{event\_cb} handler function that will be called to handle a range of events. The opaque \texttt{data} value will be passed in each time, and will be freed on closedown of the library by a call to \texttt{free\_event\_data\_cb}.
+
+The callback event encapsulates a range of scenarios:
+
+\begin{lstlisting}
+enum
+{
+	PDF_DOCUMENT_EVENT_ALERT,
+	PDF_DOCUMENT_EVENT_PRINT,
+	PDF_DOCUMENT_EVENT_LAUNCH_URL,
+	PDF_DOCUMENT_EVENT_MAIL_DOC,
+	PDF_DOCUMENT_EVENT_SUBMIT,
+	PDF_DOCUMENT_EVENT_EXEC_MENU_ITEM,
+};
+\end{lstlisting}
+
+It is envisaged that the callback handler will check the \texttt{type} field of the supplied \texttt{pdf\_doc\_event} structure, and behave accordingly.
+
+For each event type there is a function to get the event specific data. For instance, for alert events, it would be:
+
+\begin{lstlisting}
+/*
+	access the details of an alert event
+	The returned pointer and all the data referred to by the
+	structure are owned by mupdf and need not be freed by the
+	caller.
+*/
+pdf_alert_event *pdf_access_alert_event(fz_context *ctx, pdf_doc_event *evt);
+\end{lstlisting}
+
+Note that the execution will be stalled until this function returns, and there is currently no way to return which button of an alert was pressed. This is a flaw, but is not easy to fix. As such alerts are useful mainly for showing errors 'after the fact'.
+
+For details of other events see \texttt{include/mupdf/pdf/event.h}.
+
 \part{MuPDF Internals}
 \chapter{The Image interface}
 \label{Image}
@@ -4565,7 +4869,8 @@ The key call here is the call to \texttt{fz\_new\_image}. This is a macro which 
 fz_image *fz_new_image_of_size(fz_context *ctx, int w, int h, int bpc, fz_colorspace *colorspace, int xres, int yres, int interpolate, int imagemask, float *decode, int *colorkey, fz_image *mask, int size, fz_image_get_pixmap_fn *get, fz_image_get_size_fn *get_size, fz_drop_image_fn *drop);
 
 #define fz_new_image(CTX,W,H,B,CS,X,Y,I,IM,D,C,M,T,G,S,Z) \
-((T*)Memento_label(fz_new_image_of_size(CTX,W,H,B,CS,X,Y,I,IM,D,C,M,sizeof(T),G,S,Z),#T))
+((T*)Memento_label(fz_new_image_of_size(CTX,W,H,B,CS,X,Y,I,IM,\
+											D,C,M,sizeof(T),G,S,Z),#T))
 \end{lstlisting}
 
 The macro takes identical parameters to the function other than passing the structure type in place of the structure type saved, and performing a typecast to simplify the typical enclosing code.
@@ -4596,7 +4901,11 @@ Both function and macro take pointers to 3 functions that need to be defined for
 	Returns a reference to a decoded pixmap that satisfies the
 	requirements of the request.
 */
-typedef fz_pixmap *(fz_image_get_pixmap_fn)(fz_context *ctx, fz_image *im, fz_irect *subarea, int w, int h, int *l2factor);
+typedef fz_pixmap *(fz_image_get_pixmap_fn)(fz_context *ctx,
+												fz_image *im,
+												fz_irect *subarea,
+												int w, int h,
+												int *l2factor);
 \end{lstlisting}
 
 Secondly, \texttt{foo\_get\_size} will be of type:
@@ -7861,42 +8170,171 @@ The interface is described in a single header, `\texttt{mupdf\slash helpers\slas
 
 MuPDF is designed to compile and run on almost any platform that supports a standard C runtime library. In general, we try to restrict our use of C features later than C89, and to rely only on POSIX standard APIs.
 
-Our primary development platforms are Linux (various versions, 32 and 64bit using both Clang and GCC compilers) and Windows (32 and 64bit, using MSVC 2005).
+Our primary development platforms are Linux (various versions, 32 and 64bit using both Clang and GCC compilers) and Windows (32 and 64bit, using MSVC 2019).
 
-The choice of MSVC 2005 is deliberate; executables produced by this version run on every Windows version from XP (Service Pack 3) up to the latest (Windows 10 Creators Update, at the time of writing). More importantly, VS2005 solutions/projects can be imported into later versions, whereas projects from later versions cannot be used in earlier ones.
+The choice of MSVC 2019 was forced upon us by the Tesseract library that we use for OCR requiring a later version of C++ than is supported by earlier versions of Visual C. Executables can be produced by this version of Visual Studio that run on every Windows version from XP (Service Pack 3) up to the latest (Windows 10 20H2, at the time of writing). If Tesseract functionality is not required, then it should be fairly simple to fall back to earlier versions of VS (certainly back to VS2010, and even back to VS2005 at the cost of a different solution format).
 
-MSVC 2005 is not truly standards compliant, but it's close enough for our purposes. Neither is Windows POSIX compliant, but in the cases where a POSIX API is required and not available, we provide windows specific code, often by implementing an equivalent API using Windows platform calls.
+Windows is not Posix compliant, but in the cases where a Posix API is required and not available, we provide windows specific code, often by implementing an equivalent API using Windows platform calls.
 
-We do not currently actively use MacOS for developing MuPDF, though we have in the past. MuPDF compiles and runs fine on MacOS, and we intend to keep it so. There is no MacOS specific code in the MuPDF codebase; the MuPDF viewer for MacOS is just the standard Linux X11 one. Similarly GSView 6.0 for Mac is a QT based application that uses the same code for Linux and Mac.
+We do not currently actively use MacOS for developing MuPDF, though we have in the past. MuPDF compiles and runs fine on MacOS, and we intend to keep it so. There is no MacOS specific code in the MuPDF codebase; the MuPDF viewer for MacOS is just the standard linux X11 one.
 
-MuPDF has language bindings for Android, iOS, Java and JavaScript.
+Aside from the native C API, MuPDF has language bindings for C++, Python, Java and JavaScript.
 
-\section{C library}
+\section{C API}
 
-On all platforms, MuPDF builds a C library that offers the standard C level API as defined within this book. By default we build a static library. Dynamic libraries can be built (and indeed are used on platforms such as Android), but we do not guarantee ABI compatibility between releases, so we do not provide this on all platforms by default.
+On all platforms, MuPDF builds a C library that offers the standard C level API as defined within this book. MuPDF is written in C and thus this C API is the basis for all the other language bindings described here. All new functionality will be exposed in the C API first. Other language bindings (as described in later sections) are built on top of the C API, sometimes by custom, hand-written code, sometimes by automated tools.
+
+By default we build a static library. Dynamic libraries can be built, but we do not guarantee ABI compatibility between releases, so we do not provide this on all platforms by default.
 
 The standard Unix Makefile requires GNU Make, and detects the presence of the third party libraries within the \texttt{thirdparty} directory. If present, these are used in preference to any system libraries.
 
+The standard Visual Studio Solution requires Visual Studio 2019, and relies upon the presence of the third party libraries as above. No facility is offered as standard for using system libraries, but this should not be hard for an experienced user of Visual Studio to customize.
+
 Our libraries frequently contain bug fixes to the standard ones, and we attempt to pass such fixes upstream to the main package maintainers. Given that all our regression and quality control testing happens with the versions that we supply, we prefer people to use our versions, and will frequently ask for bug reports to be reproduced using such a build before investing too much time in trying to solve them.
 
-\section{Android viewer}
-\section{Desktop Java}
-\subsection{Language bindings}
-\subsection{Viewer}
-\section{GSView}
+\section{C++ API}
+
+We offer an object-oriented reflection of the standard C API into C++. While C++ programs can certainly call the C API directly, we offer the C++ bindings not just because they offer an environment that experienced C++ codes may find more familiar, but also because they can hide some of the complexities involved.
+
+This book does not go into detail on the C++ API, but in general, it is derived fairly simply (conceptually at least) from the C level one. To best illustrate the differences between the C and C++ APIs, let us consider an example. In C, we would load a page by calling:
+
+\begin{lstlisting}
+fz_page *page = fz_load_page(ctx, doc, page_num);
+\end{lstlisting}
+
+The C++ equivalent would be:
+
+\begin{lstlisting}
+mupdf::Page page = doc.load_page(page_num);
+\end{lstlisting}
+
+This simple example highlights some important differences.
+
+Firstly, where (almost) every C level call takes an \texttt{fz\_context} argument as the first parameter, this is handled for users automatically at the C++ level.
+
+Secondly, where C API functions operate on a particular object (in this example, a page), this will typically be passed as the second parameter (after the context). In the C++ translation, these objects are instances of classes, and functions become methods on these classes. That is to say that while the C API is not explicitly object-oriented (as the language does not natively support that concept) the generated C++ API is.
+
+Next, where the C version would need to be wrapped in a \texttt{fz\_try}/\texttt{fz\_catch} construct to handle any exceptions thrown, the C++ version only needs to handle standard C++ exceptions. This can reduce code as the C++ program may already be handling such exceptions.
+
+Finally, by passing objects by value, the C++ version handles reference counting automatically. Where programmers using the C version are required to track references manually using calls like \texttt{fz\_keep\_page} and \texttt{fz\_drop\_page}, C++ programmers never need to call these as this is taken care of behind the scenes.
+
+This C++ API is generated using a script that uses the Clang/llvm parser to analyse the C API so it is largely automatic. Often, changes/additions to the C API will convert seamlessly to C++ with no additional changes. For more complex cases, some tweaking of the scripts may be required. This automatic conversion happens based upon the API exposed in the public C headers; by default any new functions or types defined there will be reflected into the C++.
+
+A few other conveniences arise with the C++ wrappers. Where appropriate generated classes have support for iteration - for instance, the contents of an \texttt{StextPage} can be navigated using familiar C++ operations:
+
+\begin{lstlisting}
+void show_stext(mupdf::StextPage &page)
+{
+    for (mupdf::StextPage::iterator it_page: page)
+    {
+        mupdf::StextBlock block = *it_page;
+        for (mupdf::StextBlock::iterator it_block: block)
+        {
+            mupdf::StextLine line = *it_block;
+            for (mupdf::StextLine::iterator it_line: line)
+            {
+                mupdf::StextChar c = *it_line;
+                fz_stext_char *c = stextchar.m_internal;
+                std::cout << "StextChar("
+                        << "c=" << c->c
+                        << " color=" << c->color
+                        << " origin=" << c->origin
+                        << " quad=" << c->quad
+                        << " size=" << c->size
+                        << " font_name=" << c->font->name
+                        << "\n";
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+This example also serves to illustrate another convenience; simple classes (`POD' classes in C++ parlance) are given a \texttt{to\_string} method and an \texttt{<<} operator that converts them to a printable form. This enables structures to quickly be printed as seen with the \texttt{origin} and \texttt{quad} fields above.
+
+\section{Python}
+
+There are 2 sets of Python bindings for MuPDF.
+
+The first set is an independent open source project called PyMuPDF (\url{https://pypi.org/project/PyMuPDF/}). This was developed independently of MuPDF, but support and commercial licensing options are now available through Artifex if required. This is a mature set of code with some helpful extensions to MuPDF itself over and above a raw reflection of the C API. We will say no more about this set of bindings here.
+
+The second set of bindings are newer, and developed directly by the MuPDF developers themselves. They consist of a reflection of the C API (actually, a reflection of the C++ API, which is itself a reflection of the C API) into Python.
+
+For the technically inclined, these bindings are generated programmatically from the C++ API using SWIG (\url{http://swig.org}). The C++ \texttt{mupdf} namespace is reflected into a Python module called \texttt{mupdf}.
+
+Thus, any changes to the C API that survive the conversion into the C++ API should make it into the Python API automatically.
+
+As a demonstration both of the power of the Python bindings and a test of them (and indirectly the C++ ones on which they are based) we have converted the \texttt{draw} subtool from \texttt{mutool} to python as \texttt{scripts/mutool\_draw.py}.
+
+\section{Java}
+
+Like the C++ and Python bindings, the Java bindings are an object-oriented reflection of the C API.
+
+In contrast to the C++ and Python bindings, the Java bindings offered in MuPDF are not generated automatically, and use hand-written code. This means that additions and modifications to the C level API will require corresponding additions and modifications to the Java code.
+
+The Java class definitions can be seen in:
+
+\begin{lstlisting}
+platform/java/src/com/artifex/mupdf/fitz
+\end{lstlisting}
+
+These lean heavily on 'native' methods. The implementations for these methods are found in \texttt{platform/java/mupdf\_native.c}, and use the JNI interface to marry up native functions and data with their Java equivalents.
+
+This Java code is designed to work both on desktop Java, and on Android devices. When built for Android devices, it offers additional classes to give easy access to Android fonts and images, and for rendering into Android bitmaps.
+
 \section{Javascript}
-\section{Linux/Windows viewer}
-\subsection{Non-GL version}
-\subsection{GLFW version}
 
+PDF files can contain Javascript fragments to perform a variety of tasks including validation of form input data. To accommodate this, MuPDF has its own Javascript engine, `mujs'.
 
+The \texttt{run} subtool of \texttt{mutool} can be used to execute Javascript using this engine. While running such scripts, the engine provides a Javascript reflection of the C API (actually, more correctly a reflection of the object-oriented version of the API as found in C++).
 
+This enables the scripting of very powerful tasks, including opening, manipulating, rendering and resaving files. Some examples of such scripts can be found in \texttt{docs/examples}.
 
 \appendix
 
 \chapter{How to contribute to MuPDF}
 
-CLA. Style. Philosophy.
+MuPDF is open source; as such it's very easy for anyone to get a copy of the source and modify it. In order to contribute any such changes or fixes back to the main version, Artifex asks for a Copyright Assignment. In order to understand why this is required, we need to first understand the licenses under which MuPDF is made available.
+
+\section{Licensing}
+
+MuPDF is released under 2 licenses. To use MuPDF you have to pick a license and obey all its terms. If you cannot abide by all the terms of a license, then you cannot use that license. If you can't agree with at least one license, you can't use MuPDF at all.
+
+\subsection{GNU AGPL}
+
+Firstly, MuPDF is released under the GNU AGPL; with this you are free to copy the code, modify it, and incorporate it into your own works as you see fit. While these works are purely for you alone there are no limits on what you can do, but once you share your modifications with anyone else (either in source or binary forms, or by making them available as part of a `service'), this counts as distribution. In order to distribute anything derived from MuPDF you must obey the terms of the GNU AGPL. 
+
+The `viral' nature of the GNU AGPL is such that this means your entire application that uses MuPDF must be distributed under the GNU AGPL, not just the portion that interfaces with MuPDF. One of the most obvious consequences of this is that you have to make all the source code for your application and all the libraries that it relies on available. For many developers, they simply cannot agree to this, which rules out the GNU AGPL for them.
+
+\subsection{Artifex Commercial License}
+
+For such cases, there is a second licensing option, a commercial license from Artifex. This is not a free license, but it does free you from the constraints of the GNU AGPL. In particular your application can remain closed source.
+
+The money raised from such commercial licenses has funded the development of MuPDF since its inception. Without commercial licenses, MuPDF would not be as well developed and capable as it is today.
+
+\section{Copyright Assignment}
+
+The reason Artifex is able to license MuPDF in this way is because it owns all the copyright in the MuPDF code. The vast majority of development work on MuPDF has been directly paid for by Artifex. The rest of it is in smaller patches and fixes that have had their Copyright assigned to Artifex.
+
+If Artifex were to take on a patch without owning the Copyright, it would no longer be able to license MuPDF commercially, which would mean that it could no longer fund development.
+
+Accordingly, in order for any (non-trivial) patch to be accepted into the main MuPDF source tree, Artifex asks the author of that patch to sign a Copyright Assignment letter giving over their copyright to Artifex.
+
+Artifex runs a Bug Bounty programme, whereby interested developers who tackle nominated problems can earn cash payments for their fixes.
+
+
+\section{Coding Style}
+
+Any submissions to MuPDF should try to match the existing coding style. While following the coding style does not guarantee inclusion, not following it will severely harm the chances of getting a patch accepted.
+
+Details of the coding style can be found in \texttt{docs/coding-style.html}.
+
+While it's true that developers can always tweak a patch before they accept it (to make it follow whitespace, layout, naming, and other conventions), submitting a patch that requires such interventions is stacking the deck against it.
+
+MuPDF is at pains to work everywhere. Submitting a patch that only works in specific circumstances (such as only working on Linux) is a sure-fire way to get rejected.
+
+Similarly, pulling in new dependencies (be it new libraries or new functions that aren't supported in all platforms) will make a patch unlikely to succeed.
+
+MuPDF has a very consistent layout and whitespace style; patches that don't follow the pattern will need to be refactored before they can be accepted.
 
 \backmatter
 \printindex
