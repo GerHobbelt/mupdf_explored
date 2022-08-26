@@ -3841,12 +3841,24 @@ These are created from a buffer containing utf-8 encoded HTML, an optional C-str
 /*
 	Create a text story using styled html.
 */
-fz_story *fz_new_story(fz_context *ctx, fz_buffer *buf, const char *user_css, float em);
+fz_story *fz_new_story(fz_context *ctx, fz_buffer *buf, const char *user_css, float em, fz_archive *archive);
 \end{lstlisting}
 
 Passing a NULL buffer will be treated as an empty document. This may be useful for creating empty stories that can be added to using the DOM.
 
 The \texttt{user\_css} string allows extra CSS definitions to be supplied over and above the default CSS built into MuPDF. Again, NULL can be used to indicate the empty string.
+
+See \rjwref{StoryCSS} for notes on recommended styles to use.
+
+The archive pointer is used as a source for loading data for any images and fonts that may be referenced in the document. For simple HTML documents that use only inbuilt fonts and no images (or images that use \texttt{data:} URLs) then this can be \texttt{NULL}.
+
+To load image and font data from the current directory, a call such as:
+
+\begin{lstlisting}
+archive = fz_open_directory(ctx, ".");
+\end{lstlisting}
+
+will obtain a suitable pointer. The caller is responsible for dropping this archive pointer. This can happen at any point after calling \texttt{fz\_new\_story()} as a reference to the archive will be taken to ensure the underlying story is not freed until the story has finished with it.
 
 \section{Document manipulations}
 
@@ -4429,6 +4441,81 @@ void fz_drop_story(fz_context *ctx, fz_story *story);
 \end{lstlisting}
 
 
+\section{Styling stories}
+\label{StoryCSS}
+
+The PDF engine in MuPDF supports styling both with inline styles, and with cascading style sheets. It should be noted that our CSS only supports CSS2 selectors, not the enhanced selectors available in CSS3.
+
+Similarly, our styling engine does not support every style defined in the specification. Historically we have been focussed on supporting styles commonly used for ebooks, so some of the more esoteric styles remain unimplemented for now.
+
+It is therefore probably worth us saying a few words about what styling we do recommend for use with stories.
+
+\subsection{Font selection and sizing}
+
+Styles can be used to select from the different fonts built into MuPDF. For instance:
+
+\begin{lstlisting}
+<span style="font-family: 'sans-serif'">
+\end{lstlisting}
+
+will select whichever sans-serif font MuPDF has been built with (typically a Nimbus Sans variant).
+
+The question of what fonts are available to you will depend upon how MuPDF is built; see \rjwref{FontProvision} for more details.
+
+Any font built in to MuPDF can be selected by name here. Alternatively, fonts can be loaded using the \texttt{font-face} style. For example:
+
+\begin{lstlisting}
+@font-face {
+  font-family: myFontName;
+  font-style: italic;
+  font-weight: bold;
+  font-variant: small-caps;
+  src: path/to/my/font.ttf
+}
+\end{lstlisting}
+
+MuPDF understands \texttt{bold} and \texttt{bolder} weights, (all others are held to be \texttt{normal}). Similarly it understands \texttt{italic} and \texttt{oblique} styles. The only supported variant is \texttt{small-caps}.
+
+\subsection{Padding, Margins and Borders}
+
+Margins, Padding and Borders are supported, for positive numbers only.
+
+\subsection{Line Height and Leading}
+
+The standard \texttt{line-height} style is supported. This sets the minimum line height between lines, but HTML layout allows for larger heights to be used if required.
+
+To allow for cases where this automatic expansion is not desirable, MuPDF provides an extra style, \texttt{-mupdf-leading}. This sets the exact height to be used for line to line spacing, and therefore matches the concept of leading used within the PDF specification.
+
+\subsection{Page breaks}
+
+MuPDF supports \texttt{page-break-before} and \texttt{page-break-after} styles on HTML elements. It recognises many values as specified in the CSS documentation but these are not all acted upon. \texttt{auto} and \texttt{avoid} currently have no effect. Because \texttt{fz\_place\_story} has no idea what page we are laying out for, the behaviour of \texttt{left} and \texttt{right} should be considered undefined, currently. The only really useful options is \texttt{always} which will cause the laid out content to break until the next rectangle passed to \texttt{fz\_place\_story}.
+
+\subsection{Text colour}
+
+MuPDF supports both \texttt{color} and \texttt{background-color} properties, as you'd expect.
+
+\subsection{Visibility}
+
+MuPDF recognises \texttt{visibility} values of \texttt{visible}, \texttt{hidden} and \texttt{collapse}, but simply treats anything other than \texttt{visible} as \texttt{hidden}.
+
+\subsection{White space}
+
+MuPDF recognises and acts on \texttt{white-space} values of \texttt{normal}, \texttt{pre}, \texttt{nowrap}, \texttt{pre-wrap} and \texttt{pre-line}.
+
+\subsection{Text indent}
+
+MuPDF recognises the \texttt{text-indent} property and indents the first line of each paragraph by it. The correct behaviour of negative values should not be relied on.
+
+\subsection{Alignment}
+
+MuPDF support \texttt{text-align} values of \texttt{left}, \texttt{right}, \texttt{center} and \texttt{justify}.
+
+Similarly it supports \texttt{vertical-align} values of \texttt{baseline}, \texttt{sub}, \texttt{super}, \texttt{top}, \texttt{bottom}, \texttt{text-top}, and \texttt{text-bottom}. Currently \texttt{text-top} behaves identically to \texttt{top} and \texttt{text-bottom} behaves identically to \texttt{bottom}.
+
+\subsection{Overflow wrap}
+
+MuPDF supports \texttt{overflow-wrap} operation for \texttt{normal} and \texttt{break-word} modes. Other values are treated as \texttt{normal}.
+
 \chapter{Progressive Mode}
 \label{ProgressiveMode}
 
@@ -4770,6 +4857,8 @@ By default MuPDF includes all the fonts it knows about. The configuration option
 Accordingly, to drop support for rendering emoji characters, you'd define \texttt{TOFU\_EMOJI}.
 
 The largest set of fonts are those for the wide range of worldwide scripts given by the Google Noto fonts. These can be omitted by defining \texttt{TOFU}.
+
+See \rjwref{FontProvision} for more details.
 
 
 \chapter{Annotations, Links and Interaction}
@@ -7883,6 +7972,94 @@ It is best to do this immediately after creating the base context.
 
 It is possible to switch between ICC and non-ICC workflows in the same instance of MuPDF (and even to use the two simultaneously). It is, however, not generally possible to swap a given context once operations on that context have started. This is because any outstanding \texttt{fz\_colorspace}s (such as those found within the store) will still refer to the wrong color management implementation!
 
+
+\chapter{Font provision within MuPDF}
+\label{FontProvision}
+
+Which fonts are built into MuPDF is a vexed question that will very much depend upon exactly where you got your MuPDF library, and what options were used to build it. While MuPDF is supplied from the authors with a wide range of fonts, the decision about which of these should be built in is left to the builder. This allows the size of the resultant library to be tuned; there is a trade-off to be made between the number of fonts included (and hence the language/script coverage) and the size of the shipped binary.
+
+\section{Tofu}
+
+In many typographical applications, if a given glyph cannot be located for display (perhaps because the required font is not on a system), it may be rendered as a empty box. Such boxes are known informally as Tofu.
+
+MuPDF tends not to display such boxes, but the notion of Tofu corresponding to ``glyphs not existing" is carried over.
+
+Specifically, while MuPDF is supplied with a large number of fonts, giving the best possible coverage for scripts/languages from across the world, we allow builders of MuPDF to customise the resultant library by omitting (or ``Tofuing") particular sets of fonts.
+
+This is done by building the library with a range of different predefines to the C compiler, all beginning \texttt{TOFU\_}.
+
+\section{Supplied fonts}
+
+Broadly the fonts supplied fall into the following categories:
+
+\subsection{Base 14 fonts}
+
+The PDF standard requires all viewers to provide 14 'standard' fonts (or metric-compatible clones thereof); Courier, Courier-Oblique, Courier-Bold, Courier-BoldOblique, Helvetica, Helvetica-Oblique, Helvetica-Bold, Helvetica-BoldOblique, Times-Roman, Times-Italic, Times-Bold, Times-BoldItalic, Symbol and ZapfDingbats. Accordingly, MuPDF is supplied with equivalent font families (Nimbus Mono, Nimbus Sans, Nimbus Roman, Standard Symbols, and Dingbats) for these fonts that answer to the standard names.
+
+It is extremely unlikely that any builder of a general purpose MuPDF library will choose to leave these fonts out of a distribution, as many PDF files rely (quite reasonably) on them being available.
+
+Nonetheless, if a builder is in control of the exact set of files that will be read by MuPDF (perhaps for a system where content is tightly controlled, and made to specific standards with all the fonts embedded) it is possible for MuPDF to be built and used without any fonts embedded.
+
+This can be achieved by building with \texttt{TOFU\_BASE14}. We only recommend this for experienced users who are in control of the content to be displayed.
+
+\subsection{Extra Latin font}
+
+Charis SIL is supplied and is used as our default for ebook reading.
+
+This font can be omitted from builds by building with \texttt{TOFU\_SIL}.
+
+\subsection{CJKV fonts}
+
+Support for Chinese, Japanese, Korean and Vietnamese scripts (CJKV or CJK for short) is given by default by the ``Source Han Serif Regular" font collection. This has 4 subfonts embedded within a single TrueType collection.
+
+This collection can be omitted from builds by building with \texttt{TOFJ\_CJK}, \texttt{TOFU\_CJK\_EXT} or \texttt{TOFU\_CJK\_LANG}.
+
+\subsection{Noto fonts}
+
+Google has produced a range of fonts that offer exceptional coverage for scripts/languages worldwide. The idea of these fonts is that with them, you should see ``no tofu". Accordingly, these are know as the ``noto" fonts.
+
+MuPDF provides a huge number of these, too many to list here. These provide great coverage, at the expense of a significant size taken in the built library.
+
+Many builders choose to eliminate these, by building with \texttt{TOFU\_NOTO} defined.
+
+\subsection{Fallback fonts}
+
+Noto Serif is supplied as a``fallback" font. It provides reasonable coverage for non-Latin, non-CJKV glyphs, so is useful as a ``last resort" for content that needs glyphs that fall outside of the "base 14" fonts.
+
+This font can be omitted from builds by building with \texttt{TOFU\_NOTO}.
+
+Additionally, if built with \texttt{TOFU\_CJK\_LANG}, MuPDF includes the DroidSansFallbackFull font. This provides decent coverage for glyphs used in CJK languages, and will be used as a font of last resort given that Source Han Serif Regular is not included.
+
+If MuPDF is built with \texttt{TOFU\_CJK\_EXT}, then MuPDF will include DroidSansFallback (a smaller version of DroidSansFallbackFull) instead. This provides worse coverage for CJK glyphs, but for a smaller size.
+
+Finally, if MuPDF is built with \texttt{TOFU\_CJK} then even DroidSansFallback will be omitted, leaving a system that cannot render any CJK glyphs at all, unless the font in question is embedded within the source PDF file.
+
+\section{Customising the included fonts}
+
+The easiest way to customise the set of fonts included within a build of MuPDF is to use the \texttt{TOFU\_...} build predefines described above. This allows fonts to omitted from the build.
+
+Further customisation (both adding and subtracting fonts) is possible with some more work, but this requires some source code alteration.
+
+The \texttt{source/fitz/font-table.h} file lists the fonts that are to be made available to MuPDF. Remove a line from this file, and that font will not be available in the built library.
+
+The ordering of fonts within font-table.h is important; it is searched in a linear fashion, and the first match for any given query found. This means, for example, that fonts intended to provide support for a specific language with a given script should be listed before fonts that offer support for any language with that script.
+
+To add new fonts, they must first be added to this file, and then the build scripts must be updated to include the font itself. Note that many fonts appear multiple times in the table, either providing different scripts/languages, or to allow each font to respond to multiple different names.
+
+Updating the build scripts for new fonts depends on the platform you are building for.
+
+\subsection{MSVC builds}
+
+The MSVC solution \texttt{mupdf.sln} contains a \texttt{libresources} project. The fonts to be included in the build are included as sources here. Simply add new fonts to this project, and they should be included automatically on the next build.
+
+Note that the symbol under which the font appears in the build depends upon the path to the font name, so it is best to follow the pattern provided by the existing fonts; \texttt{resources/fonts/<foundry name>/<font name>.<suffix>}.
+
+\subsection{Makefile builds}
+
+The \texttt{Makefile} contains a section that sets the \texttt{FONT\_BIN} macro to a list of files found from files within \texttt{resources/fonts} using wildcards. Either put the new fonts to be included into this directory, or extend \texttt{FONT\_BIN} to include the source for your font.
+
+Note that the name under which the font appears  in the build depends upon the path to the font name, so it is best to follow the pattern provided by the existing fonts;
+\texttt{resources/fonts/<foundry name>/<font name>.<suffix>}.
 
 \part{The MuPDF Interpreters}
 \chapter{PDF Interpreter Details}
