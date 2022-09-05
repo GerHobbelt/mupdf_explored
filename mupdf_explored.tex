@@ -3852,13 +3852,9 @@ See \rjwref{StoryCSS} for notes on recommended styles to use.
 
 The archive pointer is used as a source for loading data for any images and fonts that may be referenced in the document. For simple HTML documents that use only inbuilt fonts and no images (or images that use \texttt{data:} URLs) then this can be \texttt{NULL}.
 
-To load image and font data from the current directory, a call such as:
+See \rjwref{Archive} for more details.
 
-\begin{lstlisting}
-archive = fz_open_directory(ctx, ".");
-\end{lstlisting}
-
-will obtain a suitable pointer. The caller is responsible for dropping this archive pointer. This can happen at any point after calling \texttt{fz\_new\_story()} as a reference to the archive will be taken to ensure the underlying story is not freed until the story has finished with it.
+If a non-\texttt{NULL} pointer is passed in, the caller retains its reference, and hence must still call \texttt{fz\_drop\_archive}. This can happen at any point after calling \texttt{fz\_new\_story()} as a reference to the archive will be taken to ensure the underlying story is not freed until the story has finished with it.
 
 \section{Document manipulations}
 
@@ -4470,7 +4466,7 @@ Any font built in to MuPDF can be selected by name here. Alternatively, fonts ca
   font-style: italic;
   font-weight: bold;
   font-variant: small-caps;
-  src: path/to/my/font.ttf
+  src: url(path/to/my/font.ttf)
 }
 \end{lstlisting}
 
@@ -4515,6 +4511,524 @@ Similarly it supports \texttt{vertical-align} values of \texttt{baseline}, \text
 \subsection{Overflow wrap}
 
 MuPDF supports \texttt{overflow-wrap} operation for \texttt{normal} and \texttt{break-word} modes. Other values are treated as \texttt{normal}.
+
+\chapter{Archives}
+\label{Archive}
+\section{Overview}
+
+Some document types, such as XPS, ebooks or CBZ, consist of a container that
+groups multiple different files together. Other document types, such as HTML,
+contain all the basic document information in a single file, but can refer
+to externally supplied resources (such as fonts or image data).
+
+MuPDF offers the \texttt{fz\_archive} type as an abstraction to cope with
+both these cases.
+
+An \texttt{fz\_archive} is a source from which files can be read (either as
+streams or as raw data). Currently \texttt{fz\_archive}s are read-only.
+
+\section{API}
+\subsection{Creating an archive}
+
+The exact mechanism for creating an archive will vary according to archive
+type. See \rjwref{ArchiveTypes} for the currently defined archive types and
+how to create them.
+
+A typical example would be to open an archive pointer to the current
+directory:
+
+\begin{lstlisting}
+archive = fz_open_directory(ctx, ".");
+\end{lstlisting}
+
+Actions on this archive will permit files within (or reachable below) the
+current directory to be accessed.
+
+\subsection{Reference counting}
+
+Creating an archive will return a pointer with a single reference taken.
+Additional references to archives can be taken and released in the usual
+fashion:
+
+\begin{lstlisting}
+/**
+	Drop a reference to an archive.
+
+	When the last reference is dropped, this closes and releases
+	any memory or filehandles associated with the archive.
+*/
+void fz_drop_archive(fz_context *ctx, fz_archive *arch);
+
+/**
+	Keep a reference to an archive.
+*/
+fz_archive *
+fz_keep_archive(fz_context *ctx, fz_archive *arch);
+\end{lstlisting}
+
+When the final reference to an archive is released the storage associated
+with the archive will be released, and the pointer invalidated.
+
+\subsection{Checking if an archive entry exists}
+
+All archives support checking if a given named entry exists:
+
+\begin{lstlisting}
+/**
+	Check if entry by given name exists.
+
+	If named entry does not exist 0 will be returned, if it does
+	exist 1 is returned.
+
+	name: Entry name to look for, this must be an exact match to
+	the entry name in the archive.
+*/
+int fz_has_archive_entry(fz_context *ctx, fz_archive *arch, const char *name);
+\end{lstlisting}
+
+\subsection{Opening an archive entry as a stream}
+
+All archives support opening a given named entry as a stream:
+
+\begin{lstlisting}
+/**
+	Opens an archive entry as a stream.
+
+	name: Entry name to look for, this must be an exact match to
+	the entry name in the archive.
+
+	Throws an exception if a matching entry cannot be found.
+*/
+fz_stream *fz_open_archive_entry(fz_context *ctx, fz_archive *arch, const char *name);
+\end{lstlisting}
+
+\subsection{Reading an archive entry as a buffer}
+
+All archives support reading the contents of a given named entry as
+a buffer:
+
+\begin{lstlisting}
+/**
+	Reads all bytes in an archive entry
+	into a buffer.
+
+	name: Entry name to look for, this must be an exact match to
+	the entry name in the archive.
+
+	Throws an exception if a matching entry cannot be found.
+*/
+fz_buffer *fz_read_archive_entry(fz_context *ctx, fz_archive *arch, const char *name);
+\end{lstlisting}
+
+\subsection{Archive format}
+
+In some cases, such as opening a directory for reading, the format of the
+archive opened is known by construction. In other cases, such as when
+opening an archive file on disk, the format can vary according to data
+within the archive itself.
+
+A printable string representing the format of the archive can be retrieved
+using:
+
+\begin{lstlisting}
+/**
+	Return a pointer to a string describing the format of the
+	archive.
+
+	The lifetime of the string is unspecified (in current
+	implementations the string will persist until the archive
+	is closed, but this is not guaranteed).
+*/
+const char *fz_archive_format(fz_context *ctx, fz_archive *arch);
+\end{lstlisting}
+
+This is primarily of use for debugging purposes. In the case of \texttt{multi}
+archives, this will report "multi" rather than the format of any of the
+subarchives.
+
+\subsection{Counting archive entries}
+
+Some archives, such as .zip and .tar files, allow the number of entries
+within the archive to be counted:
+
+\begin{lstlisting}
+/**
+	Number of entries in archive.
+
+	Will always return a value >= 0.
+
+	May throw an exception if this type of archive cannot count the
+	entries (such as a directory).
+*/
+int fz_count_archive_entries(fz_context *ctx, fz_archive *arch);
+\end{lstlisting}
+
+Others, such as virtual archives pointing at directories will throw
+an exception. This is primarily of use for debugging purposes.
+
+\subsection{Enumerating archive entries}
+
+Some archives, such as .zip and .tar files, allow the entries within the
+archive to be be enumerated:
+
+\begin{lstlisting}
+/**
+	Get listed name of entry position idx.
+
+	idx: Must be a value >= 0 < return value from
+	fz_count_archive_entries. If not in range NULL will be
+	returned.
+
+	May throw an exception if this type of archive cannot list the
+	entries (such as a directory).
+*/
+const char *fz_list_archive_entry(fz_context *ctx, fz_archive *arch, int idx);
+\end{lstlisting}
+
+Others, such as virtual archives pointing at directories, or multi archives,
+will throw an exception. This is primarily of use for debugging purposes.
+
+\section{Archive Types}
+\label{ArchiveTypes}
+
+\subsection{Overview}
+
+A variety of different archive implementations exist within MuPDF, and
+callers can even implement their own.
+
+Some archive types are 'virtual', in that they represent a collection of
+files where the collection, at least, and sometimes the files themselves,
+are not represented in permanent storage. These types can only be created
+using type specific APIs documented below.
+
+Other archive types are based upon a traditional archive file, and the
+content type can be detected automatically. These can be opened by using
+the generic functions:
+
+\begin{lstlisting}
+/**
+	Open a zip or tar archive
+
+	Open a file and identify its archive type based on the archive
+	signature contained inside.
+
+	filename: a path to a file as it would be given to open(2).
+*/
+fz_archive *fz_open_archive(fz_context *ctx, const char *filename);
+
+/**
+	Open zip or tar archive stream.
+
+	Open an archive using a seekable stream object rather than
+	opening a file or directory on disk.
+*/
+fz_archive *fz_open_archive_with_stream(fz_context *ctx, fz_stream *file);
+\end{lstlisting}
+
+Currently, only zip and tar archives are supported, but this may be
+extended in future.
+
+\subsection{Zip archives}
+
+As well as being accessible using the generic functions above, zip
+archives can be detected and opened using zip-specific API functions.
+
+\begin{lstlisting}
+/**
+	Detect if stream object is a zip archive.
+
+	Assumes that the stream object is seekable.
+*/
+int fz_is_zip_archive(fz_context *ctx, fz_stream *file);
+
+/**
+	Open a zip archive file.
+
+	An exception is throw if the file is not a zip archive as
+	indicated by the presence of a zip signature.
+
+	filename: a path to a zip archive file as it would be given to
+	open(2).
+*/
+fz_archive *fz_open_zip_archive(fz_context *ctx, const char *path);
+
+/**
+	Open a zip archive stream.
+
+	Open an archive using a seekable stream object rather than
+	opening a file or directory on disk.
+
+	An exception is throw if the stream is not a zip archive as
+	indicated by the presence of a zip signature.
+
+*/
+fz_archive *fz_open_zip_archive_with_stream(fz_context *ctx, fz_stream *file);
+\end{lstlisting}
+
+\subsubsection{Zip writer}
+
+While, as stated, archive support is currently read-only, we do have an
+API to allow zip files to be created.
+
+This is achieved by a \texttt{fz\_zip\_writer}:
+
+\begin{lstlisting}
+/**
+	fz_zip_writer offers methods for creating and writing zip files.
+	It can be seen as the reverse of the fz_archive zip
+	implementation.
+*/
+typedef struct fz_zip_writer fz_zip_writer;
+
+/**
+	Create a new zip writer that writes to a given file.
+
+	Open an archive using a seekable stream object rather than
+	opening a file or directory on disk.
+*/
+fz_zip_writer *fz_new_zip_writer(fz_context *ctx, const char *filename);
+
+/**
+	Create a new zip writer that writes to a given output stream.
+
+	Ownership of out passes in immediately upon calling this function.
+	The caller should never drop the fz_output, even if this function throws
+	an exception.
+*/
+fz_zip_writer *fz_new_zip_writer_with_output(fz_context *ctx, fz_output *out);
+\end{lstlisting}
+
+Once a \texttt{fz\_zip\_writer} has been created, individual entries can then
+be output:
+
+\begin{lstlisting}
+/**
+	Given a buffer of data, (optionally) compress it, and add it to
+	the zip file with the given name.
+*/
+void fz_write_zip_entry(fz_context *ctx, fz_zip_writer *zip, const char *name, fz_buffer *buf, int compress);
+\end{lstlisting}
+
+When all the entries have been written, the zip file should be closed:
+
+\begin{lstlisting}
+/**
+	Close the zip file for writing.
+
+	This flushes any pending data to the file. This can throw
+	exceptions.
+*/
+void fz_close_zip_writer(fz_context *ctx, fz_zip_writer *zip);
+\end{lstlisting}
+
+And finally, the reference to the writer should be dropped:
+
+\begin{lstlisting}
+/**
+	Drop the reference to the zipfile.
+
+	In common with other 'drop' methods, this will never throw an
+	exception.
+*/
+void fz_drop_zip_writer(fz_context *ctx, fz_zip_writer *zip);
+\end{lstlisting}
+
+The zip writer can be dropped at any point during usage to cleanly
+free up the resources, but unless it has been properly closed first
+the data within the written zipfile may be truncated.
+
+As can be seen from the API, the zip file writer is independent to
+that of archives. Once a zip file has been fully written, it can
+then be opened and read using the archive mechanism, but neither
+the writer not the archive mechanisms can be used to modify an
+existing zipfile.
+
+Should such functionality be desired, the best we can offer is to
+create a writer to a new zip file, open an archive view on an
+existing zip file, and then to copy entries across, whereupon
+new entries can be added.
+
+\subsection{Tar archives}
+
+As well as being accessible using the generic functions above, tar
+archives can be detected and opened using tar-specific API functions.
+
+\begin{lstlisting}
+/**
+	Detect if stream object is a tar achieve.
+
+	Assumes that the stream object is seekable.
+*/
+int fz_is_tar_archive(fz_context *ctx, fz_stream *file);
+
+/**
+	Open a tar archive file.
+
+	An exception is throw if the file is not a tar archive as
+	indicated by the presence of a tar signature.
+
+	filename: a path to a tar archive file as it would be given to
+	open(2).
+*/
+fz_archive *fz_open_tar_archive(fz_context *ctx, const char *filename);
+
+/**
+	Open a tar archive stream.
+
+	Open an archive using a seekable stream object rather than
+	opening a file or directory on disk.
+
+	An exception is throw if the stream is not a tar archive as
+	indicated by the presence of a tar signature.
+
+*/
+fz_archive *fz_open_tar_archive_with_stream(fz_context *ctx, fz_stream *file);
+\end{lstlisting}
+
+\subsection{`Virtual' directory archives}
+
+In some cases, it can be useful to make whole directories on the
+local filing system appear as `virtual' archives.
+
+\begin{lstlisting}
+/**
+	Open a directory as if it was an archive.
+
+	A special case where a directory is opened as if it was an
+	archive.
+
+	Note that for directories it is not possible to retrieve the
+	number of entries or list the entries. It is however possible
+	to check if the archive has a particular entry.
+
+	path: a path to a directory as it would be given to opendir(3).
+*/
+fz_archive *fz_open_directory(fz_context *ctx, const char *path);
+\end{lstlisting}
+
+Care should be taken by callers of this function to consider the
+security implications of allowing read-only access to the local filing
+system. In many cases this will not be a problem, but in others
+(perhaps where a MuPDF-based app might run user submitted scripts on
+a server), there are potential data-leakage implications.
+
+To mitigate against such issues, all `paths' passed to \texttt{fz\_archive}
+functions are `cleaned' to avoid such constructs as `.', `..', and
+absolute paths (paths beginning with `/').
+
+\subsection{`Virtual' tree archives}
+\label{TreeArchive}
+
+On occasion, it can be useful to construct a virtual archive of
+entries that exist in memory. One such example of this would be
+to make image or font resources available for an Story (see
+\rjwref{Story}).
+
+For this, we provide the tree archive, so called because it is
+built upon the \texttt{fz\_tree} structure.
+
+A tree archive can be created using:
+
+\begin{lstlisting}
+/**
+	Create an archive that holds named buffers.
+
+	tree can either be a preformed tree with fz_buffers as values,
+	or it can be NULL for an empty tree.
+*/
+fz_archive *fz_new_tree_archive(fz_context *ctx, fz_tree *tree);
+\end{lstlisting}
+
+The \texttt{tree} can either be a pointer to an existing \texttt{fz\_tree}
+where the values for each node within the tree are \texttt{fz\_buffer}
+references, or it can be \texttt{NULL} to create an initially empty archive.
+
+Whichever option is taken, new entries can be added to the archive by
+either passing in \texttt{fz\_buffer} pointers:
+
+\begin{lstlisting}
+/**
+	Add a named buffer to an existing tree archive.
+
+	The tree will take a new reference to the buffer. Ownership
+	is not transferred.
+*/
+void fz_tree_archive_add_buffer(fz_context *ctx, fz_archive *arch, const char *name, fz_buffer *buf);
+\end{lstlisting}
+
+or by passing blocks of data in directly:
+
+\begin{lstlisting}
+/**
+	Add a named block of data to an existing tree archive.
+
+	The data will be copied into a buffer, and so the caller
+	may free it as soon as this returns.
+*/
+void fz_tree_archive_add_data(fz_context *ctx, fz_archive *arch, const char *name, const void *data, size_t size);
+\end{lstlisting}
+
+Using \texttt{fz\_buffer}s is more desirable to passing in raw data, as this
+avoids the need to make a new copy the data as \texttt{fz\_buffer}s have a
+better defined lifespan.
+
+\subsection{Multi archives}
+
+The final type of archive, is that of a multi archive. This allows
+multiple existing archives to be joined together to appear as one.
+
+As an example of why this might be useful, consider using stories
+(see \rjwref{Story}) to create multiple documents - perhaps daily
+reports of some kind. Each document might want to share the same
+fonts, but might have different image data associated with it.
+
+Whenever the program runs, we'd create the image(s) for the report
+in memory, where the font data (constant between runs) might be
+held on disc as a zip file. We can use a tree archive (see \rjwref{TreeArchive})
+to hold the images, but we need some way to join both the contents
+of the tree archive and the zip file.
+
+This can be achieved using a multi-archive.
+
+\begin{lstlisting}
+/**
+	Create a new multi archive (initially empty).
+*/
+fz_archive *fz_new_multi_archive(fz_context *ctx);
+\end{lstlisting}
+
+This call creates an initially empty archive. We can then `mount'
+existing archives into it:
+
+\begin{lstlisting}
+/**
+	Add an archive to the set of archives handled by a multi
+	archive.
+
+	If path is NULL, then the archive contents will appear at the
+	top level, otherwise, the archives contents will appear prefixed
+	by path.
+*/
+void fz_mount_multi_archive(fz_context *ctx, fz_archive *arch_, fz_archive *sub, const char *path);
+\end{lstlisting}
+
+In our example above, we might first mount the zip file containing
+the font data, and then make another call to mount the tree archive
+containing the image data.
+
+When called with non-\texttt{NULL} paths, this is very similar to
+the idea of mounting filing systems on unix. For instance, mounting
+the zip file at `resources', would mean that every entry of the zip file
+(e.g. `Courier', `Helvetica/Bold' etc) would appear to users of the multi
+archive prefixed by `resources' (e.g. `resources/Courier',
+`resources/Helvetica/Bold' etc).
+
+When called with a \texttt{NULL} path, the contents of the mounted
+archive will appear without a prefix.
+
+If two archives contain entries with the same filename (including any prefix)
+then the later entry will be the one found in the multi-archive. That
+is to say, entries in later archives override conflicting entries in earlier ones.
 
 \chapter{Progressive Mode}
 \label{ProgressiveMode}
